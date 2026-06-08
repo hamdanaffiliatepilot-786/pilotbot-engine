@@ -21,6 +21,9 @@ const BLOGGER_CLIENT_SECRET = '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';
 const BLOGGER_REFRESH_TOKEN = '1//04N1D0adAA4NJCgYIARAAGAQSNwF-L9Ir9PxJtu7wfbQr5srSZEx_HszKuX23n2HdQWkyumqxGz_WKcScM_NKk9Plggmf9qhxMMA';
 const BLOG_ID = '4924676053847184907';
 
+// 🔑 INSTAGRAM SESSION ID (Tumhara diya hua token)
+const INSTA_SESSION_ID = "77703968755:c3Gd0s17DSKhxF:28:AYiRunJ_F2QXSYtEwn4AuAu3DJW9NnjKotTWRm-LkA";
+
 const supabase = createClient(SB_URL, SB_KEY);
 
 async function getSettings() {
@@ -82,9 +85,6 @@ app.post('/api/reel-product', async (req, res) => {
     try {
         console.log("Scraping Instagram Reel via Apify...");
         
-        // PASTE YOUR INSTAGRAM SESSION ID HERE (from Step 2)
-        const INSTA_SESSION_ID = "YOUR_INSTAGRAM_SESSION_ID_HERE"; 
-        
         const run = await apifyClient.actor("shu8hvrXbJbY3Eb9W").call({
             "resultsType": "posts",
             "directUrls": [reelUrl],
@@ -133,7 +133,6 @@ async function getBloggerAccessToken() {
     } catch (error) { console.error("Blogger Token Error", error.message); return null; }
 }
 
-// CRON: Blog Post Daily 8 AM
 cron.schedule('0 8 * * *', async () => {
     console.log("⏰ Writing Blog...");
     const settings = await getSettings();
@@ -154,7 +153,7 @@ cron.schedule('0 8 * * *', async () => {
     } catch(e) { console.log("❌ Blog Error:", e.message); }
 });
 
-// KEEP RENDER AWAKE (Pings itself every 10 minutes)
+// KEEP RENDER AWAKE
 cron.schedule('*/10 * * * *', async () => {
     try { await axios.get('https://pilotbot-engine.onrender.com/'); console.log("Render Kept Awake!"); } catch(e) {}
 });
