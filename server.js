@@ -7,7 +7,7 @@ const cron = require('node-cron');
 const app = express();
 app.use(express.json());
 
-// 🔑 KEYS
+// 🔑 ALL KEYS
 const SB_URL = 'https://pvsqvpbjhiwjgifbgmzl.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2c3F2cGJqaGl3amdpZmJnbXpsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDgxNDg0MiwiZXhwIjoyMDk2MzkwODQyfQ.obNCTgtXsFrszT478xb2Cne1mGnxYK-Mls52OccouK4';
 const DEFAULT_GEMINI_KEY = 'AQ.Ab8RN6JomLmhvW5ZSmLlMLTrpBj8NzbZPqTtoAqRAdmHIZEEFA';
@@ -15,13 +15,12 @@ const DEFAULT_GEMINI_KEY = 'AQ.Ab8RN6JomLmhvW5ZSmLlMLTrpBj8NzbZPqTtoAqRAdmHIZEEF
 const APIFY_TOKEN = 'apify_api_vR3MuRp3NLyql4NTm603ykIAqAa3Fo4x3m1n';
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
 
-// BLOGGER
 const BLOGGER_CLIENT_ID = '347967969883-i25938q4sqpsgoihh3up0s2dahp0e7c9.apps.googleusercontent.com';
 const BLOGGER_CLIENT_SECRET = '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';
 const BLOGGER_REFRESH_TOKEN = '1//04N1D0adAA4NJCgYIARAAGAQSNwF-L9Ir9PxJtu7wfbQr5srSZEx_HszKuX23n2HdQWkyumqxGz_WKcScM_NKk9Plggmf9qhxMMA';
 const BLOG_ID = '4924676053847184907';
 
-// 🔑 INSTAGRAM SESSION ID (Tumhara diya hua token)
+// Tumhara Instagram Session ID (Decoded)
 const INSTA_SESSION_ID = "77703968755:c3Gd0s17DSKhxF:28:AYiRunJ_F2QXSYtEwn4AuAu3DJW9NnjKotTWRm-LkA";
 
 const supabase = createClient(SB_URL, SB_KEY);
@@ -32,7 +31,7 @@ async function getSettings() {
 }
 
 // ROUTES
-app.get('/', (req, res) => res.send('🤖 PilotBot Engine is AWAKE and LIVE!'));
+app.get('/', (req, res) => res.send('🤖 PilotBot Engine is AWAKE!'));
 
 app.get('/api/settings', async (req, res) => {
     const settings = await getSettings();
@@ -47,44 +46,37 @@ app.post('/api/settings', async (req, res) => {
 });
 
 // ==========================================
-// 🛒 APIFY: REAL-TIME COUPON FETCHER
+// 💸 NEW: AI PRICE COMPARISON (Instant)
 // ==========================================
-app.get('/api/coupons', async (req, res) => {
-    const store = req.query.store || 'amazon';
-    const keyword = store === 'amazon' ? 'amazon coupons today' : 'flipkart offers today';
+app.post('/api/compare-prices', async (req, res) => {
+    const { product } = req.body;
+    const settings = await getSettings();
+    const GEM_KEY = settings.gemini_key || DEFAULT_GEMINI_KEY;
     
     try {
-        console.log(`Fetching ${store} coupons via Apify...`);
-        const run = await apifyClient.actor("se6u51NCji6y89vBS").call({
-            "keywords": [keyword],
-            "maxResultsPerKeyword": 5,
-            "fullDetails": true,
-            "marketplace": "com"
-        });
+        const genAI = new GoogleGenerativeAI(GEM_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+        const prompt = `I need to compare prices for "${product}" across Indian e-commerce sites. Give me a JSON array with 3 objects: Amazon India, Flipkart, and eBay. Each object must have "store" (string), "price" (string with ₹ symbol), and "url" (string with search URL). Just return the raw JSON array, no other text.`;
         
-        const coupons = items.map(item => ({
-            code: item.title || "Deal Available",
-            discount: item.price ? `Price: ${item.price}` : "Click to see"
-        })).slice(0, 5);
-
-        res.json({ coupons: coupons });
+        const result = await model.generateContent(prompt);
+        let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        const prices = JSON.parse(responseText);
+        res.json({ success: true, prices: prices });
     } catch (error) {
-        console.error("Apify Coupon Error:", error.message);
-        res.json({ coupons: [{ code: "Limit Reached", discount: "Try again in 2 minutes" }] });
+        console.error("Price Compare Error:", error.message);
+        res.json({ success: false, prices: [] });
     }
 });
 
 // ==========================================
-// 🎬 APIFY: INSTAGRAM REEL PRODUCT FINDER
+// 🎬 APIFY: INSTAGRAM REEL FINDER
 // ==========================================
 app.post('/api/reel-product', async (req, res) => {
     const { reelUrl } = req.body;
-    
     try {
-        console.log("Scraping Instagram Reel via Apify...");
-        
+        console.log("Scraping Reel via Apify...");
         const run = await apifyClient.actor("shu8hvrXbJbY3Eb9W").call({
             "resultsType": "posts",
             "directUrls": [reelUrl],
@@ -119,7 +111,38 @@ app.post('/api/reel-product', async (req, res) => {
         }
     } catch (error) {
         console.error("Apify Reel Error:", error.message);
-        res.json({ success: false, productName: "Error analyzing reel. Session ID might be missing." });
+        res.json({ success: false, productName: "Error analyzing reel. Apify might be sleeping." });
+    }
+});
+
+// ==========================================
+// 🛒 APIFY: REAL-TIME COUPONS
+// ==========================================
+app.get('/api/coupons', async (req, res) => {
+    const store = req.query.store || 'amazon';
+    const keyword = store === 'amazon' ? 'amazon coupons today' : 'flipkart offers today';
+    
+    try {
+        console.log(`Fetching ${store} coupons via Apify...`);
+        const run = await apifyClient.actor("se6u51NCji6y89vBS").call({
+            "keywords": [keyword],
+            "maxResultsPerKeyword": 3,
+            "fullDetails": true,
+            "marketplace": "com"
+        });
+        
+        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+        
+        const coupons = items.map(item => ({
+            code: item.title || "Deal Available",
+            discount: item.price ? `Price: ${item.price}` : "Click to see"
+        })).slice(0, 3);
+
+        res.json({ coupons: coupons });
+    } catch (error) {
+        console.error("Apify Coupon Error:", error.message);
+        // SMART FALLBACK if Apify sleeps
+        res.json({ coupons: [{ code: "Server Busy", discount: "Coupons are updating. Try again in 2 mins!" }] });
     }
 });
 
