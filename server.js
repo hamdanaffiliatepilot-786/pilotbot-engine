@@ -1,22 +1,21 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const { ApifyClient } = require('apify-client'); // APIFY ADDED
+const { ApifyClient } = require('apify-client');
 const axios = require('axios');
 const cron = require('node-cron');
 const app = express();
 app.use(express.json());
 
-// 🔑 HARDCODED KEYS
+// 🔑 KEYS
 const SB_URL = 'https://pvsqvpbjhiwjgifbgmzl.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2c3F2cGJqaGl3amdpZmJnbXpsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDgxNDg0MiwiZXhwIjoyMDk2MzkwODQyfQ.obNCTgtXsFrszT478xb2Cne1mGnxYK-Mls52OccouK4';
 const DEFAULT_GEMINI_KEY = 'AQ.Ab8RN6JomLmhvW5ZSmLlMLTrpBj8NzbZPqTtoAqRAdmHIZEEFA';
 
-// 🔑 APIFY CREDENTIALS
 const APIFY_TOKEN = 'apify_api_vR3MuRp3NLyql4NTm603ykIAqAa3Fo4x3m1n';
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
 
-// 🔑 BLOGGER CREDENTIALS
+// BLOGGER
 const BLOGGER_CLIENT_ID = '347967969883-i25938q4sqpsgoihh3up0s2dahp0e7c9.apps.googleusercontent.com';
 const BLOGGER_CLIENT_SECRET = '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';
 const BLOGGER_REFRESH_TOKEN = '1//04N1D0adAA4NJCgYIARAAGAQSNwF-L9Ir9PxJtu7wfbQr5srSZEx_HszKuX23n2HdQWkyumqxGz_WKcScM_NKk9Plggmf9qhxMMA';
@@ -24,14 +23,13 @@ const BLOG_ID = '4924676053847184907';
 
 const supabase = createClient(SB_URL, SB_KEY);
 
-// Helper: Get Settings
 async function getSettings() {
     const { data } = await supabase.from('agent_settings').select('*').eq('id', 1).single();
     return data;
 }
 
 // ROUTES
-app.get('/', (req, res) => res.send('🤖 PilotBot Engine with Apify is LIVE!'));
+app.get('/', (req, res) => res.send('🤖 PilotBot Engine is AWAKE and LIVE!'));
 
 app.get('/api/settings', async (req, res) => {
     const settings = await getSettings();
@@ -46,11 +44,11 @@ app.post('/api/settings', async (req, res) => {
 });
 
 // ==========================================
-// 🛒 APIFY: REAL-TIME COUPON & DEAL FETCHER
+// 🛒 APIFY: REAL-TIME COUPON FETCHER
 // ==========================================
 app.get('/api/coupons', async (req, res) => {
     const store = req.query.store || 'amazon';
-    const keyword = store === 'amazon' ? 'coupons deals' : 'offers deals';
+    const keyword = store === 'amazon' ? 'amazon coupons today' : 'flipkart offers today';
     
     try {
         console.log(`Fetching ${store} coupons via Apify...`);
@@ -64,14 +62,14 @@ app.get('/api/coupons', async (req, res) => {
         const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
         
         const coupons = items.map(item => ({
-            code: item.title || "Deal Active",
-            discount: item.price ? `Price: ${item.price}` : "Click to see deal"
+            code: item.title || "Deal Available",
+            discount: item.price ? `Price: ${item.price}` : "Click to see"
         })).slice(0, 5);
 
         res.json({ coupons: coupons });
     } catch (error) {
-        console.error("Apify Error:", error.message);
-        res.json({ coupons: [{ code: "API Limit", discount: "Try again later" }] });
+        console.error("Apify Coupon Error:", error.message);
+        res.json({ coupons: [{ code: "Limit Reached", discount: "Try again in 2 minutes" }] });
     }
 });
 
@@ -83,11 +81,16 @@ app.post('/api/reel-product', async (req, res) => {
     
     try {
         console.log("Scraping Instagram Reel via Apify...");
+        
+        // PASTE YOUR INSTAGRAM SESSION ID HERE (from Step 2)
+        const INSTA_SESSION_ID = "YOUR_INSTAGRAM_SESSION_ID_HERE"; 
+        
         const run = await apifyClient.actor("shu8hvrXbJbY3Eb9W").call({
             "resultsType": "posts",
             "directUrls": [reelUrl],
             "resultsLimit": 1,
-            "addParentData": false
+            "addParentData": false,
+            "instagramCookies": [{ "name": "sessionid", "value": INSTA_SESSION_ID, "domain": ".instagram.com" }]
         });
         
         const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
@@ -96,7 +99,6 @@ app.post('/api/reel-product', async (req, res) => {
             const reelData = items[0];
             const caption = reelData.caption || reelData.text || "Product found in reel";
             
-            // Use Gemini to extract product name
             const settings = await getSettings();
             const GEM_KEY = settings.gemini_key || DEFAULT_GEMINI_KEY;
             const genAI = new GoogleGenerativeAI(GEM_KEY);
@@ -117,13 +119,45 @@ app.post('/api/reel-product', async (req, res) => {
         }
     } catch (error) {
         console.error("Apify Reel Error:", error.message);
-        res.json({ success: false, productName: "Error analyzing reel" });
+        res.json({ success: false, productName: "Error analyzing reel. Session ID might be missing." });
     }
 });
 
-// BLOGGER LOGIC (Same as before)
-async function getBloggerAccessToken() { /* ... */ }
-cron.schedule('0 8 * * *', async () => { /* ... */ });
+// BLOGGER LOGIC
+async function getBloggerAccessToken() {
+    try {
+        const response = await axios.post('https://oauth2.googleapis.com/token', {
+            client_id: BLOGGER_CLIENT_ID, client_secret: BLOGGER_CLIENT_SECRET, refresh_token: BLOGGER_REFRESH_TOKEN, grant_type: 'refresh_token'
+        });
+        return response.data.access_token;
+    } catch (error) { console.error("Blogger Token Error", error.message); return null; }
+}
+
+// CRON: Blog Post Daily 8 AM
+cron.schedule('0 8 * * *', async () => {
+    console.log("⏰ Writing Blog...");
+    const settings = await getSettings();
+    const GEM_KEY = settings.gemini_key || DEFAULT_GEMINI_KEY;
+    try {
+        const genAI = new GoogleGenerativeAI(GEM_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const result = await model.generateContent("Write a high SEO 800-word shopping guide about Best Tech Deals Today. No fake links.");
+        const blogText = result.response.text();
+        
+        const accessToken = await getBloggerAccessToken();
+        if (accessToken) {
+            await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts`, {
+                kind: 'blogger#post', title: 'Best Tech Deals Today - By Hamdan', content: blogText + `<br><p>Visit <a href="https://affiliatepilot-frontend.vercel.app">AffiliatePilot</a></p>`
+            }, { headers: { Authorization: `Bearer ${accessToken}` } });
+            console.log("✅ Blog Posted!");
+        }
+    } catch(e) { console.log("❌ Blog Error:", e.message); }
+});
+
+// KEEP RENDER AWAKE (Pings itself every 10 minutes)
+cron.schedule('*/10 * * * *', async () => {
+    try { await axios.get('https://pilotbot-engine.onrender.com/'); console.log("Render Kept Awake!"); } catch(e) {}
+});
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('🚀 PilotBot Engine with Apify & Blogger Running!'));
+app.listen(PORT, () => console.log('🚀 PilotBot Engine Running!'));
