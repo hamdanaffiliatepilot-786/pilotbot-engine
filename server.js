@@ -63,8 +63,7 @@ app.post('/api/compare-prices', async (req, res) => {
     try {
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        
-        const prompt = `I need to compare prices for "${product}" across Indian e-commerce sites. Give me a JSON array with 3 objects: Amazon India, Flipkart, and eBay. Each object must have "store" (string), "price" (string with ₹ symbol), and "url" (string with search URL). Just return the raw JSON array, no other text.`;
+        const prompt = `I need estimated prices for "${product}" across 8 global platforms. Give me a JSON array with 8 objects. Stores must be: Amazon India, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, and Walmart. Each object must have "store" (string), "price" (estimated string with ₹ symbol), and "url" (search URL string). Just return the raw JSON array, no other text.`;;
         
         const result = await model.generateContent(prompt);
         let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
