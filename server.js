@@ -10,6 +10,8 @@ app.use(express.json());
 // 🔑 ALL KEYS
 const SB_URL = 'https://pvsqvpbjhiwjgifbgmzl.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2c3F2cGJqaGl3amdpZmJnbXpsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDgxNDg0MiwiZXhwIjoyMDk2MzkwODQyfQ.obNCTgtXsFrszT478xb2Cne1mGnxYK-Mls52OccouK4';
+
+// TUMHARI SAHI GEMINI API KEY
 const DEFAULT_GEMINI_KEY = 'AIzaSyCUzBsmcOP3ug629YdlrT8-puMQ6qlu8As';
 
 const APIFY_TOKEN = 'apify_api_vR3MuRp3NLyql4NTm603ykIAqAa3Fo4x3m1n';
@@ -20,7 +22,7 @@ const BLOGGER_CLIENT_SECRET = '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';
 const BLOGGER_REFRESH_TOKEN = '1//04N1D0adAA4NJCgYIARAAGAQSNwF-L9Ir9PxJtu7wfbQr5srSZEx_HszKuX23n2HdQWkyumqxGz_WKcScM_NKk9Plggmf9qhxMMA';
 const BLOG_ID = '4924676053847184907';
 
-// Tumhara Instagram Session ID (Decoded)
+// TUMHARA INSTAGRAM SESSION ID
 const INSTA_SESSION_ID = "77703968755:c3Gd0s17DSKhxF:28:AYiRunJ_F2QXSYtEwn4AuAu3DJW9NnjKotTWRm-LkA";
 
 const supabase = createClient(SB_URL, SB_KEY);
@@ -31,7 +33,12 @@ async function getSettings() {
 }
 
 // ROUTES
-app.get('/', (req, res) => res.send('🤖 PilotBot Engine is AWAKE!'));
+app.get('/', (req, res) => res.send('🤖 PilotBot Engine is AWAKE and LIVE!'));
+
+// UPTIMEROBOT PING ENDPOINT (Keeps server awake 24/7)
+app.get('/ping', (req, res) => {
+    res.status(200).send('🤖 PilotBot is awake and running 24/7!');
+});
 
 app.get('/api/settings', async (req, res) => {
     const settings = await getSettings();
@@ -46,7 +53,7 @@ app.post('/api/settings', async (req, res) => {
 });
 
 // ==========================================
-// 💸 NEW: AI PRICE COMPARISON (Instant)
+// 💸 AI PRICE COMPARISON
 // ==========================================
 app.post('/api/compare-prices', async (req, res) => {
     const { product } = req.body;
@@ -111,7 +118,7 @@ app.post('/api/reel-product', async (req, res) => {
         }
     } catch (error) {
         console.error("Apify Reel Error:", error.message);
-        res.json({ success: false, productName: "Error analyzing reel. Apify might be sleeping." });
+        res.json({ success: false, productName: "Error analyzing reel." });
     }
 });
 
@@ -141,12 +148,13 @@ app.get('/api/coupons', async (req, res) => {
         res.json({ coupons: coupons });
     } catch (error) {
         console.error("Apify Coupon Error:", error.message);
-        // SMART FALLBACK if Apify sleeps
-        res.json({ coupons: [{ code: "Server Busy", discount: "Coupons are updating. Try again in 2 mins!" }] });
+        res.json({ coupons: [{ code: "Limit Reached", discount: "Try again in 2 mins" }] });
     }
 });
 
-// BLOGGER LOGIC
+// ==========================================
+// 📝 BLOGGER AUTO-POST
+// ==========================================
 async function getBloggerAccessToken() {
     try {
         const response = await axios.post('https://oauth2.googleapis.com/token', {
@@ -174,11 +182,6 @@ cron.schedule('0 8 * * *', async () => {
             console.log("✅ Blog Posted!");
         }
     } catch(e) { console.log("❌ Blog Error:", e.message); }
-});
-
-// KEEP RENDER AWAKE
-cron.schedule('*/10 * * * *', async () => {
-    try { await axios.get('https://pilotbot-engine.onrender.com/'); console.log("Render Kept Awake!"); } catch(e) {}
 });
 
 const PORT = process.env.PORT || 3000;
