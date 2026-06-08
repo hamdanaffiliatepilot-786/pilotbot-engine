@@ -1,4 +1,4 @@
-require('dotenv').config(); // 🔴 SABSE PEHLE YE HONA ZAROORI HAI
+require('dotenv').config();
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -11,7 +11,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔑 AB SAB KEYS .ENV AUR RENDER SE AAYENGI (CODE MEIN NAHI)
+// 🔑 KEYS (Render ke Environment Variables se aayengi)
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
 const GEM_KEY = process.env.GEMINI_KEY;
@@ -40,20 +40,7 @@ async function getSettings() {
 // ==========================================
 
 app.get('/', (req, res) => res.send('🤖 PilotBot Engine is AWAKE and LIVE!'));
-
-app.get('/ping', (req, res) => res.status(200).send('🤖 PilotBot is awake and running 24/7!'));
-
-app.get('/api/settings', async (req, res) => {
-    const settings = await getSettings();
-    res.json(settings);
-});
-
-app.post('/api/settings', async (req, res) => {
-    const newSettings = req.body;
-    const { error } = await supabase.from('agent_settings').update(newSettings).eq('id', 1);
-    if (error) return res.json({ success: false, error: error.message });
-    res.json({ success: true });
-});
+app.get('/ping', (req, res) => res.status(200).send('🤖 PilotBot is awake!'));
 
 // 1. EMI Calculator
 app.post('/api/emi-calculator', (req, res) => {
@@ -74,7 +61,7 @@ app.get('/api/currency', async (req, res) => {
     } catch (e) { res.json({ success: false, error: "Currency API Error" }); }
 });
 
-// 3. AI Price Comparison
+// 3. AI PRICE COMPARISON (UPDATED - Real Search URLs)
 app.post('/api/compare-prices', async (req, res) => {
     const { product } = req.body;
     if (!product) return res.json({ success: false, prices: [] });
@@ -82,11 +69,28 @@ app.post('/api/compare-prices', async (req, res) => {
     try {
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        const prompt = `I need estimated prices for "${product}" across 8 global platforms. Give me a JSON array with 8 objects. Stores must be: Amazon India, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, and Walmart. Each object must have "store" (string), "price" (estimated string with ₹ symbol), and "url" (search URL string). Just return the raw JSON array, no other text.`;
+        const prompt = `I need estimated prices for "${product}" across 8 global platforms. Give me a JSON array with 8 objects. Stores must be: Amazon India, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, and Walmart. Each object must have: "store" (string), "price" (estimated string with ₹ symbol), "search_query" (optimized search term for that store). Just return the raw JSON array, no other text.`;
         
         const result = await model.generateContent(prompt);
         let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        const prices = JSON.parse(responseText);
+        let prices = JSON.parse(responseText);
+
+        prices = prices.map(p => {
+            let url = '#';
+            const q = encodeURIComponent(p.search_query || product);
+            switch(p.store) {
+                case 'Amazon India': url = `https://www.amazon.in/s?k=${q}`; break;
+                case 'Flipkart': url = `https://www.flipkart.com/search?q=${q}`; break;
+                case 'Myntra': url = `https://www.myntra.com/${q}`; break;
+                case 'Meesho': url = `https://www.meesho.com/search?q=${q}`; break;
+                case 'Ajio': url = `https://www.ajio.com/search/?text%3D${q}`; break;
+                case 'AliExpress': url = `https://www.aliexpress.com/w/wholesale-${q}.html`; break;
+                case 'Nykaa': url = `https://www.nykaa.com/search/result?q=${q}`; break;
+                case 'Walmart': url = `https://www.walmart.com/search?q=${q}`; break;
+            }
+            return { ...p, url: url };
+        });
+
         res.json({ success: true, prices: prices });
     } catch (error) {
         console.error("Price Compare Error:", error.message);
@@ -114,11 +118,7 @@ app.post('/api/reel-product', async (req, res) => {
             const result = await model.generateContent(prompt);
             const productName = result.response.text().trim();
 
-            res.json({ 
-                success: true, productName: productName,
-                searchLink: `https://www.amazon.in/s?k=${encodeURIComponent(productName)}`,
-                flipkartLink: `https://www.flipkart.com/search?q=${encodeURIComponent(productName)}`
-            });
+            res.json({ success: true, productName: productName });
         } else {
             res.json({ success: false, productName: "Could not identify product" });
         }
@@ -157,112 +157,98 @@ app.post('/api/price-alert', async (req, res) => {
     else res.json({ success: false, error: error.message });
 });
 
+// 7. AI Gift Finder
+app.post('/api/gift-finder', async (req, res) => {
+    const { relation, budget, interest } = req.body;
+    if (!relation || !budget) return res.json({ success: false, gifts: [] });
+
+    try {
+        const genAI = new GoogleGenerativeAI(GEM_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        const prompt = `Suggest 5 best gift ideas for my ${relation} who likes ${interest || 'general things'}. My budget is ${budget}. Return a JSON array with 5 objects. Each object must have: "gift_name" (string), "estimated_price" (string with ₹), "reason" (why it's a good gift in 10 words). Just return raw JSON array.`;
+        
+        const result = await model.generateContent(prompt);
+        let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+        const gifts = JSON.parse(responseText);
+        res.json({ success: true, gifts: gifts });
+    } catch (error) {
+        console.error("Gift Finder Error:", error.message);
+        res.json({ success: false, gifts: [] });
+    }
+});
+
 // ==========================================
 // 🤖 AUTOMATION ENGINE (Cron Jobs)
 // ==========================================
 
-// 🔥 CRON 1: DAILY HIGH-SEO BLOG POST (8 AM Daily)
+// 🔥 CRON 1: DAILY HIGH-SEO BLOG POST
 cron.schedule('0 8 * * *', async () => {
     console.log("⏰ Writing SEO Blog...");
     try {
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        
-        const prompt = `Write a high SEO shopping guide (800 words) about "Best Tech Deals Today". 
-        Return a strict JSON object with: 
-        {"title": "SEO Optimized Title", "metaDesc": "160 char meta description", "keywords": "keyword1, keyword2", "content": "HTML content. Use <!--AFF_LINK_1--> where affiliate links should go."}`;
-        
+        const prompt = `Write a high SEO shopping guide (800 words) about "Best Tech Deals Today". Return a strict JSON object with: {"title": "SEO Title", "metaDesc": "160 char meta description", "keywords": "kw1, kw2", "content": "HTML content with <!--AFF_LINK_1--> placeholder."}`;
         const result = await model.generateContent(prompt);
         let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const blogData = JSON.parse(responseText);
 
         let finalContent = blogData.content;
-        
-        // Fetch Image from Unsplash if key is provided
         if (UNSPLASH_KEY) {
             try {
-                const imgRes = await axios.get(`https://api.unsplash.com/photos/random?query=technology-shopping&client_id=${UNSPLASH_KEY}`);
-                const imageUrl = imgRes.data.urls.regular;
-                finalContent = `<img src="${imageUrl}" alt="${blogData.keywords}" style="max-width:100%;"/><br><br>` + finalContent;
-            } catch(e) { console.log("Unsplash image fetch failed, posting without image."); }
+                const imgRes = await axios.get(`https://api.unsplash.com/photos/random?query=technology&client_id=${UNSPLASH_KEY}`);
+                finalContent = `<img src="${imgRes.data.urls.regular}" alt="${blogData.keywords}"/><br>` + finalContent;
+            } catch(e) { console.log("Image fetch failed"); }
         }
 
-        // Post to Blogger
         const accessToken = await getBloggerAccessToken();
         if (accessToken) {
             await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts`, {
-                kind: 'blogger#post',
-                title: blogData.title,
+                kind: 'blogger#post', title: blogData.title,
                 content: finalContent + `<br><p>Visit <a href="https://affiliatepilot-frontend.vercel.app">AffiliatePilot</a></p>`
             }, { headers: { Authorization: `Bearer ${accessToken}` } });
-            console.log("✅ SEO Blog Posted!");
+            console.log("✅ Blog Posted!");
         }
     } catch(e) { console.log("❌ Blog Error:", e.message); }
 });
 
-// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM Daily)
+// 🛒 CRON 2: CJ DROPSHIPPING IMPORTER
 cron.schedule('0 10 * * *', async () => {
-    if (!CJ_ACCESS_TOKEN) return; // Skip if no key
+    if (!CJ_ACCESS_TOKEN) return;
     console.log("⏰ Importing CJ Products...");
     try {
-        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
-            pageNum: 1, pageSize: 3
-        }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
-
+        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', { pageNum: 1, pageSize: 3 }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
         const products = cjRes.data.data.list;
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-
         for (let prod of products) {
-            const aiPrompt = `Analyze this product: Name: ${prod.productNameEn}, Original Price: $${prod.sellPrice}. 
-            Give me a JSON: {"seo_title": "high search volume title for India", "seo_desc": "meta description for shopping", "selling_price_inr": calculate_selling_price_in_INR_with_50_percent_margin}`;
-            const aiRes = await model.generateContent(aiPrompt);
-            let aiText = aiRes.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-            const seoData = JSON.parse(aiText);
-
-            await supabase.from('store_products').insert({
-                cj_product_id: prod.productId,
-                name: seoData.seo_title,
-                description: seoData.seo_desc,
-                image: prod.productImage,
-                price_inr: seoData.selling_price_inr,
-                affiliate_link: prod.productUrl
-            });
+            const aiRes = await model.generateContent(`Product: ${prod.productNameEn}, Price: $${prod.sellPrice}. Return JSON: {"seo_title": "title", "seo_desc": "desc", "selling_price_inr": price_with_50_percent_margin}`);
+            const seoData = JSON.parse(aiRes.response.text().replace(/```json/g, '').replace(/```/g, '').trim());
+            await supabase.from('store_products').insert({ cj_product_id: prod.productId, name: seoData.seo_title, description: seoData.seo_desc, image: prod.productImage, price_inr: seoData.selling_price_inr });
         }
-        console.log("✅ CJ Products Imported to Store!");
+        console.log("✅ CJ Products Imported!");
     } catch(e) { console.log("❌ CJ Error:", e.message); }
 });
 
-// 📌 CRON 3: PINTEREST AUTO-PINNER (12 PM Daily)
+// 📌 CRON 3: PINTEREST AUTO-PINNER
 cron.schedule('0 12 * * *', async () => {
-    if (!PINTEREST_TOKEN || !PINTEREST_BOARD_ID) return; // Skip if no keys
+    if (!PINTEREST_TOKEN || !PINTEREST_BOARD_ID) return;
     console.log("⏰ Pinning to Pinterest...");
     try {
         const { data: products } = await supabase.from('store_products').select('*').eq('is_pinned', false).limit(3);
-        
         for (let prod of products) {
-            await axios.post('https://api.pinterest.com/v5/pins', {
-                board_id: PINTEREST_BOARD_ID,
-                title: prod.name,
-                description: prod.description,
-                destination_link: `https://affiliatepilot-frontend.vercel.app/store/${prod.id}`,
-                media_source: { source_type: "image_url", url: prod.image }
-            }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}` } });
-
+            await axios.post('https://api.pinterest.com/v5/pins', { board_id: PINTEREST_BOARD_ID, title: prod.name, description: prod.description, destination_link: `https://affiliatepilot-frontend.vercel.app/store/${prod.id}`, media_source: { source_type: "image_url", url: prod.image } }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}` } });
             await supabase.from('store_products').update({ is_pinned: true }).eq('id', prod.id);
         }
-        console.log("✅ Products Pinned to Pinterest!");
+        console.log("✅ Pinned!");
     } catch(e) { console.log("❌ Pinterest Error:", e.message); }
 });
 
 // 🔑 BLOGGER TOKEN HELPER
 async function getBloggerAccessToken() {
     try {
-        const response = await axios.post('https://oauth2.googleapis.com/token', {
-            client_id: BLOGGER_CLIENT_ID, client_secret: BLOGGER_CLIENT_SECRET, refresh_token: BLOGGER_REFRESH_TOKEN, grant_type: 'refresh_token'
-        });
+        const response = await axios.post('https://oauth2.googleapis.com/token', { client_id: BLOGGER_CLIENT_ID, client_secret: BLOGGER_CLIENT_SECRET, refresh_token: BLOGGER_REFRESH_TOKEN, grant_type: 'refresh_token' });
         return response.data.access_token;
-    } catch (error) { console.error("Blogger Token Error", error.message); return null; }
+    } catch (error) { console.error("Token Error", error.message); return null; }
 }
 
 const PORT = process.env.PORT || 3000;
