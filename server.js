@@ -10,7 +10,7 @@ app.use(express.json());
 // 🔑 ALL KEYS
 const SB_URL = 'https://pvsqvpbjhiwjgifbgmzl.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2c3F2cGJqaGl3amdpZmJnbXpsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDgxNDg0MiwiZXhwIjoyMDk2MzkwODQyfQ.obNCTgtXsFrszT478xb2Cne1mGnxYK-Mls52OccouK4';
-const DEFAULT_GEMINI_KEY = 'AQ.Ab8RN6JomLmhvW5ZSmLlMLTrpBj8NzbZPqTtoAqRAdmHIZEEFA';
+const DEFAULT_GEMINI_KEY = 'AIzaSyCUzBsmcOP3ug629YdlrT8-puMQ6qlu8As';
 
 const APIFY_TOKEN = 'apify_api_vR3MuRp3NLyql4NTm603ykIAqAa3Fo4x3m1n';
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
