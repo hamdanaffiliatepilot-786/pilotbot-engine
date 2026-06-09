@@ -24,8 +24,8 @@ const INSTA_SESSION_ID = process.env.INSTA_SESSION_ID;
 const UNSPLASH_KEY = process.env.UNSPLASH_KEY;
 const PINTEREST_TOKEN = process.env.PINTEREST_TOKEN;
 const PINTEREST_BOARD_ID = process.env.PINTEREST_BOARD_ID;
-const CJ_APP_ID = process.env.CJ_APP_ID;
-const CJ_APP_SECRET = process.env.CJ_APP_SECRET;
+const CJ_EMAIL = process.env.CJ_EMAIL;
+const CJ_PASSWORD = process.env.CJ_PASSWORD;
 
 // CLIENTS
 const supabase = createClient(SB_URL, SB_KEY);
@@ -210,14 +210,14 @@ app.get('/api/test-pinterest', async (req, res) => {
 
 // 🚀 CJ DROPSHIPPING INSTANT TEST API (Products Turant LANE KE LIYE)
 app.get('/api/test-cj', async (req, res) => {
-    if (!CJ_APP_ID || !CJ_APP_SECRET) {
-        return res.json({ success: false, error: "CJ Tokens missing in Render Environment!" });
+    if (!CJ_EMAIL || !CJ_PASSWORD) {
+        return res.json({ success: false, error: "CJ Email or Password missing in Render Environment!" });
     }
     try {
-        // Step 1: Get Access Token
+        // Step 1: Get Access Token using Email & Password
         const authRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken', {
-            email: CJ_APP_ID, 
-            password: CJ_APP_SECRET
+            email: CJ_EMAIL, 
+            password: CJ_PASSWORD
         });
         const cjAccessToken = authRes.data.data.accessToken;
         if(!cjAccessToken) return res.json({ success: false, error: "Token Error", details: authRes.data });
@@ -292,11 +292,12 @@ cron.schedule('0 8 * * *', async () => {
 
 // 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM)
 cron.schedule('0 10 * * *', async () => {
-    if (!CJ_APP_ID || !CJ_APP_SECRET) return;
+    if (!CJ_EMAIL || !CJ_PASSWORD) return;
     console.log("⏰ Importing CJ Products...");
     try {
         const authRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken', {
-            email: CJ_APP_ID, password: CJ_APP_SECRET
+            email: CJ_EMAIL, 
+            password: CJ_PASSWORD
         });
         const cjAccessToken = authRes.data.data.accessToken;
         if(!cjAccessToken) {
