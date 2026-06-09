@@ -22,9 +22,10 @@ const BLOGGER_REFRESH_TOKEN = process.env.BLOGGER_REFRESH_TOKEN;
 const BLOG_ID = process.env.BLOG_ID;
 const INSTA_SESSION_ID = process.env.INSTA_SESSION_ID;
 const UNSPLASH_KEY = process.env.UNSPLASH_KEY;
-const CJ_ACCESS_TOKEN = process.env.CJ_ACCESS_TOKEN;
 const PINTEREST_TOKEN = process.env.PINTEREST_TOKEN;
 const PINTEREST_BOARD_ID = process.env.PINTEREST_BOARD_ID;
+const CJ_APP_ID = process.env.CJ_APP_ID;
+const CJ_APP_SECRET = process.env.CJ_APP_SECRET;
 
 // CLIENTS
 const supabase = createClient(SB_URL, SB_KEY);
@@ -41,6 +42,18 @@ async function getSettings() {
 
 app.get('/', (req, res) => res.send('🤖 PilotBot Engine is AWAKE and LIVE!'));
 app.get('/ping', (req, res) => res.status(200).send('🤖 PilotBot is awake!'));
+
+app.get('/api/settings', async (req, res) => {
+    const settings = await getSettings();
+    res.json(settings);
+});
+
+app.post('/api/settings', async (req, res) => {
+    const newSettings = req.body;
+    const { error } = await supabase.from('agent_settings').update(newSettings).eq('id', 1);
+    if (error) return res.json({ success: false, error: error.message });
+    res.json({ success: true });
+});
 
 // 1. EMI Calculator
 app.post('/api/emi-calculator', (req, res) => {
@@ -61,7 +74,7 @@ app.get('/api/currency', async (req, res) => {
     } catch (e) { res.json({ success: false, error: "Currency API Error" }); }
 });
 
-// 3. AI PRICE COMPARISON (UPDATED - Real Search URLs)
+// 3. AI PRICE COMPARISON
 app.post('/api/compare-prices', async (req, res) => {
     const { product } = req.body;
     if (!product) return res.json({ success: false, prices: [] });
@@ -69,7 +82,7 @@ app.post('/api/compare-prices', async (req, res) => {
     try {
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        const prompt = `I need estimated prices for "${product}" across 8 global platforms. Give me a JSON array with 8 objects. Stores must be: Amazon India, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, and Walmart. Each object must have: "store" (string), "price" (estimated string with ₹ symbol), "search_query" (optimized search term for that store). Just return the raw JSON array, no other text.`;
+        const prompt = `I need estimated prices for "${product}" across 8 global platforms. Give me a JSON array with 8 objects. Stores must be: Amazon India, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, and Walmart. Each object must have: "store" (string), "price" (estimated string with ₹ symbol), "search_query" (optimized search term). Just return the raw JSON array.`;
         
         const result = await model.generateContent(prompt);
         let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
@@ -117,7 +130,6 @@ app.post('/api/reel-product', async (req, res) => {
             const prompt = `Analyze this Instagram caption and extract the main product name. Just return the product name, nothing else. Caption: "${caption}"`;
             const result = await model.generateContent(prompt);
             const productName = result.response.text().trim();
-
             res.json({ success: true, productName: productName });
         } else {
             res.json({ success: false, productName: "Could not identify product" });
@@ -177,17 +189,36 @@ app.post('/api/gift-finder', async (req, res) => {
     }
 });
 
+// 🧪 PINTEREST INSTANT TEST API
+app.get('/api/test-pinterest', async (req, res) => {
+    if (!PINTEREST_TOKEN || !PINTEREST_BOARD_ID) {
+        return res.json({ success: false, error: "Pinterest Tokens missing in Render!" });
+    }
+    try {
+        const testPin = await axios.post('https://api.pinterest.com/v5/pins', {
+            board_id: PINTEREST_BOARD_ID,
+            title: "Test Pin by PilotBot 🤖",
+            description: "Automated test pin from AffiliatePilot Engine!",
+            destination_link: "https://affiliatepilot-frontend.vercel.app",
+            media_source: { source_type: "image_url", url: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&q=80" }
+        }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}` } });
+        res.json({ success: true, message: "✅ Test Pin Created! Check your board.", pinId: testPin.data.id });
+    } catch (error) {
+        res.json({ success: false, error: error.response?.data || "API Error" });
+    }
+});
+
 // ==========================================
 // 🤖 AUTOMATION ENGINE (Cron Jobs)
 // ==========================================
 
-// 🔥 CRON 1: DAILY HIGH-SEO BLOG POST
+// 🔥 CRON 1: DAILY HIGH-SEO BLOG POST (8 AM)
 cron.schedule('0 8 * * *', async () => {
     console.log("⏰ Writing SEO Blog...");
     try {
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        const prompt = `Write a high SEO shopping guide (800 words) about "Best Tech Deals Today". Return a strict JSON object with: {"title": "SEO Title", "metaDesc": "160 char meta description", "keywords": "kw1, kw2", "content": "HTML content with <!--AFF_LINK_1--> placeholder."}`;
+        const prompt = `Write a high SEO shopping guide (800 words) about "Best Tech Deals Today". Return a strict JSON object with: {"title": "SEO Title", "metaDesc": "160 char meta desc", "keywords": "kw1, kw2", "content": "HTML content with <!--AFF_LINK_1--> placeholder."}`;
         const result = await model.generateContent(prompt);
         let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const blogData = JSON.parse(responseText);
@@ -211,42 +242,78 @@ cron.schedule('0 8 * * *', async () => {
     } catch(e) { console.log("❌ Blog Error:", e.message); }
 });
 
-// 🛒 CRON 2: CJ DROPSHIPPING IMPORTER
+// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM)
 cron.schedule('0 10 * * *', async () => {
-    if (!CJ_ACCESS_TOKEN) return;
+    if (!CJ_APP_ID || !CJ_APP_SECRET) return;
     console.log("⏰ Importing CJ Products...");
     try {
-        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', { pageNum: 1, pageSize: 3 }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
+        // Step 1: Auto-Get Access Token
+        const authRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken', {
+            email: CJ_APP_ID,
+            password: CJ_APP_SECRET
+        });
+        
+        const cjAccessToken = authRes.data.data.accessToken;
+        if(!cjAccessToken) {
+            console.log("❌ CJ Token Error:", authRes.data);
+            return;
+        }
+
+        // Step 2: Fetch Products
+        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
+            pageNum: 1, pageSize: 3
+        }, { headers: { 'CJ-Access-Token': cjAccessToken } });
+
         const products = cjRes.data.data.list;
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        
         for (let prod of products) {
             const aiRes = await model.generateContent(`Product: ${prod.productNameEn}, Price: $${prod.sellPrice}. Return JSON: {"seo_title": "title", "seo_desc": "desc", "selling_price_inr": price_with_50_percent_margin}`);
-            const seoData = JSON.parse(aiRes.response.text().replace(/```json/g, '').replace(/```/g, '').trim());
-            await supabase.from('store_products').insert({ cj_product_id: prod.productId, name: seoData.seo_title, description: seoData.seo_desc, image: prod.productImage, price_inr: seoData.selling_price_inr });
+            let aiText = aiRes.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            const seoData = JSON.parse(aiText);
+            await supabase.from('store_products').insert({ 
+                cj_product_id: prod.productId, 
+                name: seoData.seo_title, 
+                description: seoData.seo_desc, 
+                image: prod.productImage, 
+                price_inr: seoData.selling_price_inr,
+                affiliate_link: prod.productUrl 
+            });
         }
         console.log("✅ CJ Products Imported!");
     } catch(e) { console.log("❌ CJ Error:", e.message); }
 });
 
-// 📌 CRON 3: PINTEREST AUTO-PINNER
+// 📌 CRON 3: PINTEREST AUTO-PINNER (12 PM)
 cron.schedule('0 12 * * *', async () => {
     if (!PINTEREST_TOKEN || !PINTEREST_BOARD_ID) return;
     console.log("⏰ Pinning to Pinterest...");
     try {
         const { data: products } = await supabase.from('store_products').select('*').eq('is_pinned', false).limit(3);
         for (let prod of products) {
-            await axios.post('https://api.pinterest.com/v5/pins', { board_id: PINTEREST_BOARD_ID, title: prod.name, description: prod.description, destination_link: `https://affiliatepilot-frontend.vercel.app/store/${prod.id}`, media_source: { source_type: "image_url", url: prod.image } }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}` } });
+            await axios.post('https://api.pinterest.com/v5/pins', {
+                board_id: PINTEREST_BOARD_ID,
+                title: prod.name,
+                description: prod.description,
+                destination_link: `https://affiliatepilot-frontend.vercel.app/store/${prod.id}`,
+                media_source: { source_type: "image_url", url: prod.image }
+            }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}` } });
             await supabase.from('store_products').update({ is_pinned: true }).eq('id', prod.id);
         }
-        console.log("✅ Pinned!");
+        console.log("✅ Products Pinned!");
     } catch(e) { console.log("❌ Pinterest Error:", e.message); }
 });
 
 // 🔑 BLOGGER TOKEN HELPER
 async function getBloggerAccessToken() {
     try {
-        const response = await axios.post('https://oauth2.googleapis.com/token', { client_id: BLOGGER_CLIENT_ID, client_secret: BLOGGER_CLIENT_SECRET, refresh_token: BLOGGER_REFRESH_TOKEN, grant_type: 'refresh_token' });
+        const response = await axios.post('https://oauth2.googleapis.com/token', { 
+            client_id: BLOGGER_CLIENT_ID, 
+            client_secret: BLOGGER_CLIENT_SECRET, 
+            refresh_token: BLOGGER_REFRESH_TOKEN, 
+            grant_type: 'refresh_token' 
+        });
         return response.data.access_token;
     } catch (error) { console.error("Token Error", error.message); return null; }
 }
