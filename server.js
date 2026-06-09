@@ -208,7 +208,7 @@ app.get('/api/test-pinterest', async (req, res) => {
     }
 });
 
-// 🚀 CJ DROPSHIPPING INSTANT TEST API (Products Turant LANE KE LIYE)
+// 🚀 CJ DROPSHIPPING INSTANT TEST API (CRASH-PROOF)
 app.get('/api/test-cj', async (req, res) => {
     if (!CJ_EMAIL || !CJ_PASSWORD) {
         return res.json({ success: false, error: "CJ Email or Password missing in Render Environment!" });
@@ -219,8 +219,16 @@ app.get('/api/test-cj', async (req, res) => {
             email: CJ_EMAIL, 
             password: CJ_PASSWORD
         });
-        const cjAccessToken = authRes.data.data.accessToken;
-        if(!cjAccessToken) return res.json({ success: false, error: "Token Error", details: authRes.data });
+        
+        const cjAccessToken = authRes?.data?.data?.accessToken; // Safe extraction
+        
+        if(!cjAccessToken) {
+            return res.json({ 
+                success: false, 
+                error: "CJ Login Failed! Email/Password galat hai ya Account verify nahi hua.", 
+                cj_response: authRes?.data // Ye tumhe CJ ka asli error dikhayega
+            });
+        }
 
         // Step 2: Fetch 2 Products 
         const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
@@ -290,7 +298,7 @@ cron.schedule('0 8 * * *', async () => {
     } catch(e) { console.log("❌ Blog Error:", e.message); }
 });
 
-// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM)
+// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM - CRASH PROOF)
 cron.schedule('0 10 * * *', async () => {
     if (!CJ_EMAIL || !CJ_PASSWORD) return;
     console.log("⏰ Importing CJ Products...");
@@ -299,9 +307,11 @@ cron.schedule('0 10 * * *', async () => {
             email: CJ_EMAIL, 
             password: CJ_PASSWORD
         });
-        const cjAccessToken = authRes.data.data.accessToken;
+        
+        const cjAccessToken = authRes?.data?.data?.accessToken; // Safe extraction
+        
         if(!cjAccessToken) {
-            console.log("❌ CJ Token Error:", authRes.data);
+            console.log("❌ CJ Token Error. CJ Response:", JSON.stringify(authRes?.data));
             return;
         }
 
