@@ -13,7 +13,7 @@ app.use(express.json());
 // 🔑 KEYS (Render ke Environment Variables se aayengi)
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
-const GROQ_KEY = process.env.GROQ_KEY; // GROQ AI KEY
+const GROQ_KEY = process.env.GROQ_KEY; 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const BLOGGER_CLIENT_ID = process.env.BLOGGER_CLIENT_ID;
 const BLOGGER_CLIENT_SECRET = process.env.BLOGGER_CLIENT_SECRET;
@@ -29,10 +29,10 @@ const CJ_ACCESS_TOKEN = process.env.CJ_ACCESS_TOKEN;
 const supabase = createClient(SB_URL, SB_KEY);
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
 
-// 🤖 GROQ AI HELPER FUNCTION (Gemini ki jagah)
+// 🤖 GROQ AI HELPER FUNCTION (Latest Model)
 async function askAI(prompt) {
     const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-        model: "llama3-8b-8192", // Fast and free model
+        model: "llama-3.3-70b-versatile", // LATEST WORKING MODEL
         messages: [
             { role: "system", content: "You are a helpful shopping assistant designed to output strict JSON when asked." },
             { role: "user", content: prompt }
@@ -212,7 +212,7 @@ app.get('/api/test-pinterest', async (req, res) => {
     }
 });
 
-// 🚀 CJ DROPSHIPPING INSTANT TEST API (USING GET METHOD)
+// 🚀 CJ DROPSHIPPING INSTANT TEST API
 app.get('/api/test-cj', async (req, res) => {
     if (!CJ_ACCESS_TOKEN) {
         return res.json({ success: false, error: "CJ_ACCESS_TOKEN missing in Render Environment!" });
