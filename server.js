@@ -24,8 +24,7 @@ const INSTA_SESSION_ID = process.env.INSTA_SESSION_ID;
 const UNSPLASH_KEY = process.env.UNSPLASH_KEY;
 const PINTEREST_TOKEN = process.env.PINTEREST_TOKEN;
 const PINTEREST_BOARD_ID = process.env.PINTEREST_BOARD_ID;
-const CJ_EMAIL = process.env.CJ_EMAIL;
-const CJ_PASSWORD = process.env.CJ_PASSWORD;
+const CJ_ACCESS_TOKEN = process.env.CJ_ACCESS_TOKEN; // DIRECT TOKEN FROM POSTMAN
 
 // CLIENTS
 const supabase = createClient(SB_URL, SB_KEY);
@@ -208,37 +207,21 @@ app.get('/api/test-pinterest', async (req, res) => {
     }
 });
 
-// 🚀 CJ DROPSHIPPING INSTANT TEST API (CRASH-PROOF)
+// 🚀 CJ DROPSHIPPING INSTANT TEST API (USING DIRECT TOKEN)
 app.get('/api/test-cj', async (req, res) => {
-    if (!CJ_EMAIL || !CJ_PASSWORD) {
-        return res.json({ success: false, error: "CJ Email or Password missing in Render Environment!" });
+    if (!CJ_ACCESS_TOKEN) {
+        return res.json({ success: false, error: "CJ_ACCESS_TOKEN missing in Render Environment!" });
     }
     try {
-        // Step 1: Get Access Token using Email & Password
-        const authRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken', {
-            email: CJ_EMAIL, 
-            password: CJ_PASSWORD
-        });
-        
-        const cjAccessToken = authRes?.data?.data?.accessToken; // Safe extraction
-        
-        if(!cjAccessToken) {
-            return res.json({ 
-                success: false, 
-                error: "CJ Login Failed! Email/Password galat hai ya Account verify nahi hua.", 
-                cj_response: authRes?.data // Ye tumhe CJ ka asli error dikhayega
-            });
-        }
-
-        // Step 2: Fetch 2 Products 
+        // Ab seedha Token se Products fetch karenge, No Login!
         const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
             pageNum: 1, pageSize: 2
-        }, { headers: { 'CJ-Access-Token': cjAccessToken } });
+        }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
 
-        const products = cjRes.data.data.list;
-        if(!products || products.length === 0) return res.json({ success: false, error: "No products found on CJ" });
+        const products = cjRes?.data?.data?.list;
+        if(!products || products.length === 0) return res.json({ success: false, error: "No products found or Token Invalid", details: cjRes?.data });
 
-        // Step 3: AI Optimization & Supabase Save
+        // AI Optimization & Supabase Save
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         let savedCount = 0;
@@ -298,28 +281,22 @@ cron.schedule('0 8 * * *', async () => {
     } catch(e) { console.log("❌ Blog Error:", e.message); }
 });
 
-// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM - CRASH PROOF)
+// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM - USING DIRECT TOKEN)
 cron.schedule('0 10 * * *', async () => {
-    if (!CJ_EMAIL || !CJ_PASSWORD) return;
+    if (!CJ_ACCESS_TOKEN) return;
     console.log("⏰ Importing CJ Products...");
     try {
-        const authRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken', {
-            email: CJ_EMAIL, 
-            password: CJ_PASSWORD
-        });
-        
-        const cjAccessToken = authRes?.data?.data?.accessToken; // Safe extraction
-        
-        if(!cjAccessToken) {
-            console.log("❌ CJ Token Error. CJ Response:", JSON.stringify(authRes?.data));
+        // Seedha Token se Products fetch karenge
+        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
+            pageNum: 1, pageSize: 3
+        }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
+
+        const products = cjRes?.data?.data?.list;
+        if(!products || products.length === 0) {
+            console.log("❌ No products found or Token invalid");
             return;
         }
 
-        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
-            pageNum: 1, pageSize: 3
-        }, { headers: { 'CJ-Access-Token': cjAccessToken } });
-
-        const products = cjRes.data.data.list;
         const genAI = new GoogleGenerativeAI(GEM_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         
