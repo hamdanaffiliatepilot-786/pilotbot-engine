@@ -208,6 +208,54 @@ app.get('/api/test-pinterest', async (req, res) => {
     }
 });
 
+// 🚀 CJ DROPSHIPPING INSTANT TEST API (Products Turant LANE KE LIYE)
+app.get('/api/test-cj', async (req, res) => {
+    if (!CJ_APP_ID || !CJ_APP_SECRET) {
+        return res.json({ success: false, error: "CJ Tokens missing in Render Environment!" });
+    }
+    try {
+        // Step 1: Get Access Token
+        const authRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken', {
+            email: CJ_APP_ID, 
+            password: CJ_APP_SECRET
+        });
+        const cjAccessToken = authRes.data.data.accessToken;
+        if(!cjAccessToken) return res.json({ success: false, error: "Token Error", details: authRes.data });
+
+        // Step 2: Fetch 2 Products 
+        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
+            pageNum: 1, pageSize: 2
+        }, { headers: { 'CJ-Access-Token': cjAccessToken } });
+
+        const products = cjRes.data.data.list;
+        if(!products || products.length === 0) return res.json({ success: false, error: "No products found on CJ" });
+
+        // Step 3: AI Optimization & Supabase Save
+        const genAI = new GoogleGenerativeAI(GEM_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        let savedCount = 0;
+        
+        for (let prod of products) {
+            const aiRes = await model.generateContent(`Product: ${prod.productNameEn}, Price: $${prod.sellPrice}. Return JSON: {"seo_title": "title", "seo_desc": "desc", "selling_price_inr": price_with_50_percent_margin}`);
+            let aiText = aiRes.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            const seoData = JSON.parse(aiText);
+            
+            await supabase.from('store_products').insert({ 
+                cj_product_id: prod.productId, 
+                name: seoData.seo_title, 
+                description: seoData.seo_desc, 
+                image: prod.productImage, 
+                price_inr: seoData.selling_price_inr,
+                affiliate_link: prod.productUrl 
+            });
+            savedCount++;
+        }
+        res.json({ success: true, message: `✅ ${savedCount} CJ Products Imported to Supabase! Check your Store page.` });
+    } catch(e) { 
+        res.json({ success: false, error: e.message, details: e.response?.data }); 
+    }
+});
+
 // ==========================================
 // 🤖 AUTOMATION ENGINE (Cron Jobs)
 // ==========================================
@@ -247,19 +295,15 @@ cron.schedule('0 10 * * *', async () => {
     if (!CJ_APP_ID || !CJ_APP_SECRET) return;
     console.log("⏰ Importing CJ Products...");
     try {
-        // Step 1: Auto-Get Access Token
         const authRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken', {
-            email: CJ_APP_ID,
-            password: CJ_APP_SECRET
+            email: CJ_APP_ID, password: CJ_APP_SECRET
         });
-        
         const cjAccessToken = authRes.data.data.accessToken;
         if(!cjAccessToken) {
             console.log("❌ CJ Token Error:", authRes.data);
             return;
         }
 
-        // Step 2: Fetch Products
         const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
             pageNum: 1, pageSize: 3
         }, { headers: { 'CJ-Access-Token': cjAccessToken } });
