@@ -24,7 +24,7 @@ const INSTA_SESSION_ID = process.env.INSTA_SESSION_ID;
 const UNSPLASH_KEY = process.env.UNSPLASH_KEY;
 const PINTEREST_TOKEN = process.env.PINTEREST_TOKEN;
 const PINTEREST_BOARD_ID = process.env.PINTEREST_BOARD_ID;
-const CJ_ACCESS_TOKEN = process.env.CJ_ACCESS_TOKEN; // DIRECT TOKEN FROM POSTMAN
+const CJ_ACCESS_TOKEN = process.env.CJ_ACCESS_TOKEN;
 
 // CLIENTS
 const supabase = createClient(SB_URL, SB_KEY);
@@ -207,16 +207,17 @@ app.get('/api/test-pinterest', async (req, res) => {
     }
 });
 
-// 🚀 CJ DROPSHIPPING INSTANT TEST API (USING DIRECT TOKEN)
+// 🚀 CJ DROPSHIPPING INSTANT TEST API (USING GET METHOD)
 app.get('/api/test-cj', async (req, res) => {
     if (!CJ_ACCESS_TOKEN) {
         return res.json({ success: false, error: "CJ_ACCESS_TOKEN missing in Render Environment!" });
     }
     try {
-        // Ab seedha Token se Products fetch karenge, No Login!
-        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
-            pageNum: 1, pageSize: 2
-        }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
+        // FIX: CJ API accepts GET request, not POST. Params in URL.
+        const cjRes = await axios.get('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
+            params: { pageNum: 1, pageSize: 2 },
+            headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN }
+        });
 
         const products = cjRes?.data?.data?.list;
         if(!products || products.length === 0) return res.json({ success: false, error: "No products found or Token Invalid", details: cjRes?.data });
@@ -281,15 +282,16 @@ cron.schedule('0 8 * * *', async () => {
     } catch(e) { console.log("❌ Blog Error:", e.message); }
 });
 
-// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM - USING DIRECT TOKEN)
+// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM - USING GET METHOD)
 cron.schedule('0 10 * * *', async () => {
     if (!CJ_ACCESS_TOKEN) return;
     console.log("⏰ Importing CJ Products...");
     try {
-        // Seedha Token se Products fetch karenge
-        const cjRes = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
-            pageNum: 1, pageSize: 3
-        }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
+        // FIX: CJ API accepts GET request, not POST.
+        const cjRes = await axios.get('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
+            params: { pageNum: 1, pageSize: 3 },
+            headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN }
+        });
 
         const products = cjRes?.data?.data?.list;
         if(!products || products.length === 0) {
