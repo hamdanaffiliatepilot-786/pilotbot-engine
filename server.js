@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { ApifyClient } = require('apify-client');
 const axios = require('axios');
 const cron = require('node-cron');
@@ -14,7 +13,7 @@ app.use(express.json());
 // 🔑 KEYS (Render ke Environment Variables se aayengi)
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
-const GEM_KEY = process.env.GEMINI_KEY;
+const GROQ_KEY = process.env.GROQ_KEY; // GROQ AI KEY
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const BLOGGER_CLIENT_ID = process.env.BLOGGER_CLIENT_ID;
 const BLOGGER_CLIENT_SECRET = process.env.BLOGGER_CLIENT_SECRET;
@@ -29,6 +28,24 @@ const CJ_ACCESS_TOKEN = process.env.CJ_ACCESS_TOKEN;
 // CLIENTS
 const supabase = createClient(SB_URL, SB_KEY);
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
+
+// 🤖 GROQ AI HELPER FUNCTION (Gemini ki jagah)
+async function askAI(prompt) {
+    const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        model: "llama3-8b-8192", // Fast and free model
+        messages: [
+            { role: "system", content: "You are a helpful shopping assistant designed to output strict JSON when asked." },
+            { role: "user", content: prompt }
+        ],
+        temperature: 0.5,
+    }, {
+        headers: { 
+            'Authorization': `Bearer ${GROQ_KEY}`, 
+            'Content-Type': 'application/json' 
+        }
+    });
+    return response.data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
+}
 
 async function getSettings() {
     const { data } = await supabase.from('agent_settings').select('*').eq('id', 1).single();
@@ -79,13 +96,9 @@ app.post('/api/compare-prices', async (req, res) => {
     if (!product) return res.json({ success: false, prices: [] });
     
     try {
-        const genAI = new GoogleGenerativeAI(GEM_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         const prompt = `I need estimated prices for "${product}" across 8 global platforms. Give me a JSON array with 8 objects. Stores must be: Amazon India, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, and Walmart. Each object must have: "store" (string), "price" (estimated string with ₹ symbol), "search_query" (optimized search term). Just return the raw JSON array.`;
         
-        const result = await model.generateContent(prompt);
-        let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        let prices = JSON.parse(responseText);
+        let prices = JSON.parse(await askAI(prompt));
 
         prices = prices.map(p => {
             let url = '#';
@@ -124,11 +137,8 @@ app.post('/api/reel-product', async (req, res) => {
         
         if(items.length > 0) {
             const caption = items[0].caption || items[0].text || "Product found in reel";
-            const genAI = new GoogleGenerativeAI(GEM_KEY);
-            const model = genAI.getGenerativeModel({ model: "gemini-pro" });
             const prompt = `Analyze this Instagram caption and extract the main product name. Just return the product name, nothing else. Caption: "${caption}"`;
-            const result = await model.generateContent(prompt);
-            const productName = result.response.text().trim();
+            const productName = await askAI(prompt);
             res.json({ success: true, productName: productName });
         } else {
             res.json({ success: false, productName: "Could not identify product" });
@@ -174,13 +184,8 @@ app.post('/api/gift-finder', async (req, res) => {
     if (!relation || !budget) return res.json({ success: false, gifts: [] });
 
     try {
-        const genAI = new GoogleGenerativeAI(GEM_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         const prompt = `Suggest 5 best gift ideas for my ${relation} who likes ${interest || 'general things'}. My budget is ${budget}. Return a JSON array with 5 objects. Each object must have: "gift_name" (string), "estimated_price" (string with ₹), "reason" (why it's a good gift in 10 words). Just return raw JSON array.`;
-        
-        const result = await model.generateContent(prompt);
-        let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        const gifts = JSON.parse(responseText);
+        const gifts = JSON.parse(await askAI(prompt));
         res.json({ success: true, gifts: gifts });
     } catch (error) {
         console.error("Gift Finder Error:", error.message);
@@ -213,7 +218,6 @@ app.get('/api/test-cj', async (req, res) => {
         return res.json({ success: false, error: "CJ_ACCESS_TOKEN missing in Render Environment!" });
     }
     try {
-        // FIX: CJ API accepts GET request, not POST. Params in URL.
         const cjRes = await axios.get('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
             params: { pageNum: 1, pageSize: 2 },
             headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN }
@@ -222,15 +226,11 @@ app.get('/api/test-cj', async (req, res) => {
         const products = cjRes?.data?.data?.list;
         if(!products || products.length === 0) return res.json({ success: false, error: "No products found or Token Invalid", details: cjRes?.data });
 
-        // AI Optimization & Supabase Save
-        const genAI = new GoogleGenerativeAI(GEM_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         let savedCount = 0;
         
         for (let prod of products) {
-            const aiRes = await model.generateContent(`Product: ${prod.productNameEn}, Price: $${prod.sellPrice}. Return JSON: {"seo_title": "title", "seo_desc": "desc", "selling_price_inr": price_with_50_percent_margin}`);
-            let aiText = aiRes.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-            const seoData = JSON.parse(aiText);
+            const prompt = `Product: ${prod.productNameEn}, Price: $${prod.sellPrice}. Return JSON: {"seo_title": "title", "seo_desc": "desc", "selling_price_inr": price_with_50_percent_margin}`;
+            const seoData = JSON.parse(await askAI(prompt));
             
             await supabase.from('store_products').insert({ 
                 cj_product_id: prod.productId, 
@@ -254,14 +254,11 @@ app.get('/api/test-cj', async (req, res) => {
 
 // 🔥 CRON 1: DAILY HIGH-SEO BLOG POST (8 AM)
 cron.schedule('0 8 * * *', async () => {
+    if(!GROQ_KEY) return;
     console.log("⏰ Writing SEO Blog...");
     try {
-        const genAI = new GoogleGenerativeAI(GEM_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
         const prompt = `Write a high SEO shopping guide (800 words) about "Best Tech Deals Today". Return a strict JSON object with: {"title": "SEO Title", "metaDesc": "160 char meta desc", "keywords": "kw1, kw2", "content": "HTML content with <!--AFF_LINK_1--> placeholder."}`;
-        const result = await model.generateContent(prompt);
-        let responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        const blogData = JSON.parse(responseText);
+        const blogData = JSON.parse(await askAI(prompt));
 
         let finalContent = blogData.content;
         if (UNSPLASH_KEY) {
@@ -282,30 +279,22 @@ cron.schedule('0 8 * * *', async () => {
     } catch(e) { console.log("❌ Blog Error:", e.message); }
 });
 
-// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM - USING GET METHOD)
+// 🛒 CRON 2: CJ DROPSHIPPING PRODUCT IMPORTER (10 AM)
 cron.schedule('0 10 * * *', async () => {
-    if (!CJ_ACCESS_TOKEN) return;
+    if (!CJ_ACCESS_TOKEN || !GROQ_KEY) return;
     console.log("⏰ Importing CJ Products...");
     try {
-        // FIX: CJ API accepts GET request, not POST.
         const cjRes = await axios.get('https://developers.cjdropshipping.com/api2.0/v1/product/list', {
             params: { pageNum: 1, pageSize: 3 },
             headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN }
         });
 
         const products = cjRes?.data?.data?.list;
-        if(!products || products.length === 0) {
-            console.log("❌ No products found or Token invalid");
-            return;
-        }
+        if(!products || products.length === 0) return;
 
-        const genAI = new GoogleGenerativeAI(GEM_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        
         for (let prod of products) {
-            const aiRes = await model.generateContent(`Product: ${prod.productNameEn}, Price: $${prod.sellPrice}. Return JSON: {"seo_title": "title", "seo_desc": "desc", "selling_price_inr": price_with_50_percent_margin}`);
-            let aiText = aiRes.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-            const seoData = JSON.parse(aiText);
+            const prompt = `Product: ${prod.productNameEn}, Price: $${prod.sellPrice}. Return JSON: {"seo_title": "title", "seo_desc": "desc", "selling_price_inr": price_with_50_percent_margin}`;
+            const seoData = JSON.parse(await askAI(prompt));
             await supabase.from('store_products').insert({ 
                 cj_product_id: prod.productId, 
                 name: seoData.seo_title, 
