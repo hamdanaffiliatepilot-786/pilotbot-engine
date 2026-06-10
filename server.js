@@ -5,13 +5,11 @@ const { ApifyClient } = require('apify-client');
 const axios = require('axios');
 const cron = require('node-cron');
 const cors = require('cors');
-const nodemailer = require('nodemailer'); // For sending emails
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Environment Variables
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
 const GROQ_KEY = process.env.GROQ_KEY; 
@@ -28,12 +26,6 @@ const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'default_token';
 const supabase = createClient(SB_URL, SB_KEY);
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
 
-// Email Setup
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.ADMIN_EMAIL, pass: process.env.EMAIL_APP_PASSWORD }
-});
-
 async function askAI(prompt) {
     try {
         const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
@@ -48,13 +40,9 @@ async function askAI(prompt) {
     } catch(e) { console.error("AI Error:", e.message); return null; }
 }
 
-// ==========================================
-// 🛒 CORE API ROUTES
-// ==========================================
-
 app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V3 is AWAKE!'));
 
-// 1. SAVE ORDER & SEND EMAIL
+// ORDER SAVE (Without Nodemailer - No Crash)
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -74,26 +62,11 @@ app.post('/api/save-order', async (req, res) => {
     }).select().single();
 
     if(error) return res.json({ success: false, error });
-
-    // SEND EMAIL TO ADMIN
-    const mailOptions = {
-        from: process.env.ADMIN_EMAIL,
-        to: process.env.ADMIN_EMAIL,
-        subject: `🚨 New Order: $${total_price} | Profit: $${total_profit}`,
-        html: `<h2>New Order Received!</h2>
-               <p><b>PayPal ID:</b> ${paypal_order_id}</p>
-               <p><b>Buyer Email:</b> ${buyer_email}</p>
-               <p><b>Products:</b></p>
-               <ul>${products.map(p=>`<li>${p.name} (PID: ${p.cj_pid}, VID: ${p.cj_vid})</li>`).join('')}</ul>
-               <p><b>Address:</b> ${JSON.stringify(buyer_address)}</p>
-               <h3 style="color:green;">Action Required: Place order on CJ!</h3>`
-    };
-    transporter.sendMail(mailOptions).catch(e => console.error("Email Error:", e));
-
+    console.log(`✅ NEW ORDER: $${total_price} | Profit: $${total_profit} | Check Supabase!`);
     res.json({ success: true, order: orderData });
 });
 
-// 2. ADMIN STATS (SECURED WITH TOKEN)
+// ADMIN STATS (SECURED)
 app.get('/api/admin/stats', async (req, res) => {
     const auth = req.headers.authorization;
     if(auth !== `Bearer ${ADMIN_SECRET_TOKEN}`) return res.status(401).json({ error: "Unauthorized" });
@@ -119,15 +92,10 @@ app.get('/api/admin/stats', async (req, res) => {
     } catch(e) { res.json({ success: false, error: e.message }); }
 });
 
-// Other APIs (Keep your existing tools APIs here - Reel, Coupons, Gifts etc)
-app.post('/api/compare-prices', async (req, res) => { const { product } = req.body; if (!product) return res.json({ success: false, prices: [] }); try { const prompt = `I need estimated prices for "${product}" across 8 global platforms. Give me a JSON array with 8 objects. Stores must be: Amazon, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, and Walmart. Each object must have: "store" (string), "price" (estimated string with $ symbol), "search_query" (optimized search term). Just return the raw JSON array.`; let prices = JSON.parse(await askAI(prompt)); prices = prices.map(p => { let url = '#'; const q = encodeURIComponent(p.search_query || product); switch(p.store) { case 'Amazon': url = `https://www.amazon.com/s?k=${q}`; break; case 'Flipkart': url = `https://www.flipkart.com/search?q=${q}`; break; default: url = `https://www.google.com/search?q=buy+${q}`; } return { ...p, url: url }; }); res.json({ success: true, prices: prices }); } catch (error) { res.json({ success: false, prices: [] }); } });
+// OTHER APIS (Compare, Reel, Coupons)
+app.post('/api/compare-prices', async (req, res) => { const { product } = req.body; if (!product) return res.json({ success: false, prices: [] }); try { const prompt = `I need estimated prices for "${product}" across 8 global platforms. Give me a JSON array with 8 objects. Stores must be: Amazon, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, and Walmart. Each object must have: "store", "price", "search_query". Just return the raw JSON array.`; let prices = JSON.parse(await askAI(prompt)); prices = prices.map(p => { let url = '#'; const q = encodeURIComponent(p.search_query || product); switch(p.store) { case 'Amazon': url = `https://www.amazon.com/s?k=${q}`; break; case 'Flipkart': url = `https://www.flipkart.com/search?q=${q}`; break; default: url = `https://www.google.com/search?q=buy+${q}`; } return { ...p, url: url }; }); res.json({ success: true, prices: prices }); } catch (error) { res.json({ success: false, prices: [] }); } });
 
-
-// ==========================================
-// 🤖 AUTOMATION ENGINE (Smart Pricing + Blog + Pinterest)
-// ==========================================
-
-// CRON 1: Smart Product Import (No Loss Formula)
+// CRON: Smart Product Import (No Loss Formula)
 cron.schedule('0 10 * * *', async () => {
     if (!CJ_ACCESS_TOKEN || !GROQ_KEY) return;
     try {
@@ -143,9 +111,8 @@ cron.schedule('0 10 * * *', async () => {
             } catch(e) {}
             
             const base = parseFloat(prod.sellPrice) || 2;
-            // MATH: (Base + Shipping) * 1.4 = Selling Price (40% Margin)
             const calculatedPrice = ((base + shipCost) * 1.4); 
-            const finalPrice = Math.floor(calculatedPrice) + 0.99; // Make .99
+            const finalPrice = Math.floor(calculatedPrice) + 0.99; 
             const profit = (finalPrice - base - shipCost).toFixed(2);
 
             const prompt = `Product: ${prod.productNameEn}. JSON: {"seo_title":"Amazon viral title","seo_desc":"2 line desc","specs":"Material: Premium|Shipping: FREE Worldwide|Warranty: 1 Year"}`;
@@ -161,43 +128,6 @@ cron.schedule('0 10 * * *', async () => {
             }
         }
     } catch(e) { console.error("Cron Error:", e.message); }
-});
-
-// CRON 2: High SEO Blog Post (8 AM Daily)
-cron.schedule('0 8 * * *', async () => {
-    if(!GROQ_KEY || !BLOGGER_REFRESH_TOKEN) return;
-    try {
-        const { data: prods } = await supabase.from('store_products').select('*').limit(3).order('created_at', { ascending: false });
-        if(!prods || prods.length === 0) return;
-
-        const prodLinks = prods.map(p => `<a href="https://yourwebsite.com/product/${p.id}">${p.name}</a> ($${p.price_usd})`).join(', ');
-        const prompt = `Write a 1000-word highly SEO optimized blog post about the latest trending gadgets. Include these products naturally with HTML links: ${prodLinks}. Use H2, H3 tags. Output raw HTML only.`;
-        const htmlContent = await askAI(prompt);
-        if(!htmlContent) return;
-
-        const tokenRes = await axios.post('https://oauth2.googleapis.com/token', { client_id: BLOGGER_CLIENT_ID, client_secret: BLOGGER_CLIENT_SECRET, refresh_token: BLOGGER_REFRESH_TOKEN, grant_type: 'refresh_token' });
-        const accessToken = tokenRes.data.access_token;
-
-        await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts`, {
-            kind: 'blogger#post', title: `Top Trending Gadgets - ${new Date().toLocaleDateString()}`, content: htmlContent
-        }, { headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } });
-    } catch(e) { console.error("Blog Error:", e.message); }
-});
-
-// CRON 3: Pinterest Pin (12 PM Daily)
-cron.schedule('0 12 * * *', async () => {
-    if(!PINTEREST_TOKEN || !PINTEREST_BOARD_ID) return;
-    try {
-        const { data: prods } = await supabase.from('store_products').select('*').limit(1).order('created_at', { ascending: false });
-        if(!prods || prods.length === 0) return;
-        const p = prods[0];
-
-        await axios.post('https://api.pinterest.com/v5/pins', {
-            board_id: PINTEREST_BOARD_ID, title: p.name, description: p.description,
-            link: `https://yourwebsite.com/product/${p.id}`,
-            media_source: { source_type: "image_url", url: p.image }
-        }, { headers: { 'Authorization': `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
-    } catch(e) { console.error("Pinterest Error:", e.message); }
 });
 
 const PORT = process.env.PORT || 3000;
