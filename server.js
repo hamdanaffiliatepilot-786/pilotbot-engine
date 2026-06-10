@@ -25,10 +25,10 @@ const BLOG_ID = process.env.BLOG_ID;
 const PINTEREST_TOKEN = process.env.PINTEREST_TOKEN;
 const PINTEREST_BOARD_ID = process.env.PINTEREST_BOARD_ID;
 const UNSPLASH_KEY = process.env.UNSPLASH_KEY;
-const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'default_token';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'super_secret_admin_token_Mrhamdu123@';
 
 const supabase = createClient(SB_URL, SB_KEY);
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
@@ -83,7 +83,7 @@ async function getBloggerToken() {
 
 app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V5 is AWAKE!'));
 
-// SAVE ORDER
+// SAVE ORDER + TELEGRAM + EMAIL
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -95,33 +95,50 @@ app.post('/api/save-order', async (req, res) => {
         cj_base_cost: products.reduce((s,p)=>s+parseFloat(p.cj_base_cost||0),0),
         cj_shipping_cost: products.reduce((s,p)=>s+parseFloat(p.cj_shipping_cost||0),0), profit_margin: total_profit
     }).select().single();
+
     if(error) return res.json({ success: false, error });
+    
     sendTelegramAlert(`🚨 <b>New Order!</b>\n💰 Price: $${total_price}\n📈 Profit: $${total_profit}\n📦 Product: ${products.map(p=>p.name).join(', ')}`);
-    sendEmailAlert(process.env.ADMIN_EMAIL, `🚨 New Order: $${total_price}`, `<h2>New Order!</h2><p>Product: ${products.map(p=>p.name).join(', ')}</p><p>Profit: $${total_profit}</p>`);
+    sendEmailAlert(process.env.ADMIN_EMAIL, `🚨 New Order: $${total_price}`, `<h2>New Order Received!</h2><p>Product: ${products.map(p=>p.name).join(', ')}</p><p>Profit: $${total_profit}</p>`);
     res.json({ success: true, order: orderData });
 });
 
-// ADMIN STATS
+// ADMIN STATS (HARDCODED TOKEN FIX)
 app.get('/api/admin/stats', async (req, res) => {
     const auth = req.headers.authorization;
-    if(auth !== `Bearer ${ADMIN_SECRET_TOKEN}`) return res.status(401).json({ error: "Unauthorized" });
+    if(auth !== `Bearer super_secret_admin_token_Mrhamdu123@`) return res.status(401).json({ error: "Unauthorized" });
     try {
         const { data: orders } = await supabase.from('orders').select('*');
         const { data: products } = await supabase.from('store_products').select('*');
+        
+        const safeOrders = orders || [];
+        const safeProducts = products || [];
+        
         let totalRevenue = 0, totalCJCost = 0, totalShippingCost = 0, totalProfit = 0;
         const trafficSources = {}; const statusCounts = {};
-        orders.forEach(o => {
+        
+        safeOrders.forEach(o => {
             const price = parseFloat(String(o.price_usd).replace(/[^0-9.]/g, '')) || 0;
             totalRevenue += price; totalCJCost += parseFloat(o.cj_base_cost)||0; totalShippingCost += parseFloat(o.cj_shipping_cost)||0; totalProfit += parseFloat(o.profit_margin)||0;
             if(o.traffic_source) trafficSources[o.traffic_source] = (trafficSources[o.traffic_source]||0)+1;
             if(o.status) statusCounts[o.status] = (statusCounts[o.status]||0)+1;
         });
-        res.json({ success: true, totalOrders: orders.length, totalProducts: products.length, totalRevenue: totalRevenue.toFixed(2), totalCJCost: totalCJCost.toFixed(2), totalShippingCost: totalShippingCost.toFixed(2), totalProfit: totalProfit.toFixed(2), trafficSources, statusCounts, recentOrders: orders.slice(-5).reverse() });
+        
+        res.json({ success: true, totalOrders: safeOrders.length, totalProducts: safeProducts.length, totalRevenue: totalRevenue.toFixed(2), totalCJCost: totalCJCost.toFixed(2), totalShippingCost: totalShippingCost.toFixed(2), totalProfit: totalProfit.toFixed(2), trafficSources, statusCounts, recentOrders: safeOrders.slice(-5).reverse() });
     } catch(e) { res.json({ success: false, error: e.message }); }
 });
 
 // COMPARE PRICES
-app.post('/api/compare-prices', async (req, res) => { const { product } = req.body; if (!product) return res.json({ success: false, prices: [] }); try { const prompt = `I need estimated prices for "${product}" across 8 platforms. JSON array with 8 objects. Stores: Amazon, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, Walmart. Keys: "store", "price", "search_query". Raw JSON only.`; let prices = JSON.parse(await askAI(prompt)); prices = prices.map(p => { let url = '#'; const q = encodeURIComponent(p.search_query || product); switch(p.store) { case 'Amazon': url = `https://www.amazon.com/s?k=${q}`; break; case 'Flipkart': url = `https://www.flipkart.com/search?q=${q}`; break; default: url = `https://www.google.com/search?q=buy+${q}`; } return { ...p, url: url }; }); res.json({ success: true, prices: prices }); } catch (error) { res.json({ success: false, prices: [] }); } });
+app.post('/api/compare-prices', async (req, res) => { 
+    const { product } = req.body; 
+    if (!product) return res.json({ success: false, prices: [] }); 
+    try { 
+        const prompt = `I need estimated prices for "${product}" across 8 platforms. JSON array with 8 objects. Stores: Amazon, Flipkart, Myntra, Meesho, Ajio, AliExpress, Nykaa, Walmart. Keys: "store", "price", "search_query". Raw JSON only.`; 
+        let prices = JSON.parse(await askAI(prompt)); 
+        prices = prices.map(p => { let url = '#'; const q = encodeURIComponent(p.search_query || product); switch(p.store) { case 'Amazon': url = `https://www.amazon.com/s?k=${q}`; break; case 'Flipkart': url = `https://www.flipkart.com/search?q=${q}`; break; default: url = `https://www.google.com/search?q=buy+${q}`; } return { ...p, url: url }; }); 
+        res.json({ success: true, prices: prices }); 
+    } catch (error) { res.json({ success: false, prices: [] }); } 
+});
 
 // MANUAL PRODUCT IMPORT
 app.get('/api/test-cj', async (req, res) => {
@@ -142,11 +159,7 @@ app.get('/api/test-cj', async (req, res) => {
     } catch(e) { res.json({ success: false, error: e.message }); }
 });
 
-// ==========================================
-// 📝 BLOG SETUP & SEO ENGINE
-// ==========================================
-
-// ONE-TIME BLOG SETUP (Creates Important Pages)
+// BLOG SETUP (Creates Important Pages)
 app.get('/api/setup-blog', async (req, res) => {
     if(!GROQ_KEY || !BLOGGER_REFRESH_TOKEN) return res.json({ error: "Missing Keys" });
     try {
