@@ -42,16 +42,15 @@ async function askAI(prompt) {
         const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
             model: "llama-3.3-70b-versatile",
             messages: [
-                { role: "system", content: "You are a world-class e-commerce SEO copywriter. Always output STRICT JSON." },
+                { role: "system", content: "You are a world-class e-commerce SEO copywriter. Always output STRICT JSON or strict HTML as requested." },
                 { role: "user", content: prompt }
             ],
             temperature: 0.7,
         }, { headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } });
-        return response.data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').trim();
+        return response.data.choices[0].message.content.replace(/```json/g, '').replace(/```html/g, '').replace(/```/g, '').trim();
     } catch(e) { console.error("AI Error:", e.message); return null; }
 }
 
-// Telegram Alert Engine
 async function sendTelegramAlert(message) {
     if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
     try {
@@ -61,7 +60,6 @@ async function sendTelegramAlert(message) {
     } catch(e) { console.error("Telegram Error:", e.message); }
 }
 
-// Resend Email Engine (No NPM install needed!)
 async function sendEmailAlert(to, subject, html) {
     if(!RESEND_API_KEY) return;
     try {
@@ -72,13 +70,20 @@ async function sendEmailAlert(to, subject, html) {
     } catch(e) { console.error("Resend Error:", e.response?.data || e.message); }
 }
 
+async function getBloggerToken() {
+    const tokenRes = await axios.post('https://oauth2.googleapis.com/token', { 
+        client_id: BLOGGER_CLIENT_ID, client_secret: BLOGGER_CLIENT_SECRET, refresh_token: BLOGGER_REFRESH_TOKEN, grant_type: 'refresh_token' 
+    });
+    return tokenRes.data.access_token;
+}
+
 // ==========================================
 // 🛒 CORE API ROUTES
 // ==========================================
 
 app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V5 is AWAKE!'));
 
-// SAVE ORDER + TELEGRAM + EMAIL
+// SAVE ORDER
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -90,19 +95,13 @@ app.post('/api/save-order', async (req, res) => {
         cj_base_cost: products.reduce((s,p)=>s+parseFloat(p.cj_base_cost||0),0),
         cj_shipping_cost: products.reduce((s,p)=>s+parseFloat(p.cj_shipping_cost||0),0), profit_margin: total_profit
     }).select().single();
-
     if(error) return res.json({ success: false, error });
-    
-    // 1. Telegram Alert
     sendTelegramAlert(`🚨 <b>New Order!</b>\n💰 Price: $${total_price}\n📈 Profit: $${total_profit}\n📦 Product: ${products.map(p=>p.name).join(', ')}`);
-    
-    // 2. Email Alert to Admin
-    sendEmailAlert(process.env.ADMIN_EMAIL, `🚨 New Order: $${total_price}`, `<h2>New Order Received!</h2><p>Product: ${products.map(p=>p.name).join(', ')}</p><p>Profit: $${total_profit}</p><p>Action Required: Place order on CJ!</p>`);
-
+    sendEmailAlert(process.env.ADMIN_EMAIL, `🚨 New Order: $${total_price}`, `<h2>New Order!</h2><p>Product: ${products.map(p=>p.name).join(', ')}</p><p>Profit: $${total_profit}</p>`);
     res.json({ success: true, order: orderData });
 });
 
-// ADMIN STATS (SECURED)
+// ADMIN STATS
 app.get('/api/admin/stats', async (req, res) => {
     const auth = req.headers.authorization;
     if(auth !== `Bearer ${ADMIN_SECRET_TOKEN}`) return res.status(401).json({ error: "Unauthorized" });
@@ -129,20 +128,47 @@ app.get('/api/test-cj', async (req, res) => {
     if (!CJ_ACCESS_TOKEN || !GROQ_KEY) return res.json({ success: false, error: "Missing API Keys" });
     try {
         const cjRes = await axios.get('https://developers.cjdropshipping.com/api2.0/v1/product/list', { params: { pageNum: 1, pageSize: 5 }, headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
-        const products = cjRes?.data?.data?.list;
-        if(!products) return res.json({ success: false, error: "No products from CJ" });
+        const products = cjRes?.data?.data?.list; if(!products) return res.json({ success: false, error: "No products" });
         let savedCount = 0;
         for (let prod of products) {
-            let shipCost = 5.00; 
-            try { const s = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/logistics/freight', { pid: prod.productId, vid: prod.defaultVariantId, quantity: 1, country: "US" }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } }); if(s.data?.data?.totalPrice) shipCost = parseFloat(s.data.data.totalPrice); } catch(e) {}
+            let shipCost = 5.00; try { const s = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/logistics/freight', { pid: prod.productId, vid: prod.defaultVariantId, quantity: 1, country: "US" }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } }); if(s.data?.data?.totalPrice) shipCost = parseFloat(s.data.data.totalPrice); } catch(e) {}
             const base = parseFloat(prod.sellPrice) || 2;
             const calculatedPrice = ((base + shipCost) * 1.4); const finalPrice = Math.floor(calculatedPrice) + 0.99; const profit = (finalPrice - base - shipCost).toFixed(2);
-            const prompt = `Product: ${prod.productNameEn}. JSON: {"seo_title":"Amazon viral title","seo_desc":"2 line desc","specs":"Material: Premium|Shipping: FREE Worldwide|Warranty: 1 Year"}`;
-            const r = await askAI(prompt);
+            const r = await askAI(`Product: ${prod.productNameEn}. JSON: {"seo_title":"Amazon viral title","seo_desc":"2 line desc","specs":"Material: Premium|Shipping: FREE|Warranty: 1 Year"}`);
             if(r) { const d = JSON.parse(r); await supabase.from('store_products').insert({ cj_product_id: prod.productId, name: d.seo_title, description: d.seo_desc, specs: d.specs, image: prod.productImage, price_usd: finalPrice.toFixed(2), affiliate_link: prod.productUrl, cj_pid: prod.productId, cj_vid: prod.defaultVariantId, cj_base_cost: base.toFixed(2), cj_shipping_cost: shipCost.toFixed(2), profit_margin: profit }); savedCount++; }
         }
         sendTelegramAlert(`🛍️ <b>Products Imported!</b>\n✅ ${savedCount} new smart-priced products added to store.`);
-        res.json({ success: true, message: `✅ ${savedCount} Smart Priced Products Imported!` });
+        res.json({ success: true, message: `✅ ${savedCount} Products Imported!` });
+    } catch(e) { res.json({ success: false, error: e.message }); }
+});
+
+// ==========================================
+// 📝 BLOG SETUP & SEO ENGINE
+// ==========================================
+
+// ONE-TIME BLOG SETUP (Creates Important Pages)
+app.get('/api/setup-blog', async (req, res) => {
+    if(!GROQ_KEY || !BLOGGER_REFRESH_TOKEN) return res.json({ error: "Missing Keys" });
+    try {
+        const accessToken = await getBloggerToken();
+        const pages = [
+            { title: "About Us - AffiliatePilot", prompt: "Write a professional 'About Us' page for an AI-powered e-commerce store named AffiliatePilot. Mention we find the best deals, offer FREE worldwide shipping, and use smart AI to compare prices. Format in clean HTML." },
+            { title: "Contact Us", prompt: "Write a 'Contact Us' page for AffiliatePilot. Mention users can reach out via email at support@affiliatepilot.com. Format in clean HTML." },
+            { title: "Privacy Policy", prompt: "Write a standard legal 'Privacy Policy' page for an e-commerce blog named AffiliatePilot. Include sections on data collection, cookies, and third-party links. Format in clean HTML." },
+            { title: "Terms and Conditions", prompt: "Write a standard 'Terms and Conditions' page for an e-commerce store AffiliatePilot. Include sections on AI price estimations, affiliate links, and shipping policies. Format in clean HTML." },
+            { title: "Disclaimer", prompt: "Write a 'Disclaimer' page for AffiliatePilot stating that prices are AI-estimated and may vary on the final store, and we use affiliate links for commissions. Format in clean HTML." }
+        ];
+
+        for (let page of pages) {
+            const content = await askAI(page.prompt);
+            if(content) {
+                await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/pages`, {
+                    kind: 'blogger#page', title: page.title, content: content
+                }, { headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } });
+            }
+        }
+        sendTelegramAlert('📝 <b>Blog Setup Complete!</b>\n5 professional legal & about pages have been published to Blogger.');
+        res.json({ success: true, message: "✅ Blog setup complete! 5 pages published." });
     } catch(e) { res.json({ success: false, error: e.message }); }
 });
 
@@ -160,15 +186,14 @@ cron.schedule('0 10 * * *', async () => {
             let shipCost = 5.00; try { const s = await axios.post('https://developers.cjdropshipping.com/api2.0/v1/logistics/freight', { pid: prod.productId, vid: prod.defaultVariantId, quantity: 1, country: "US" }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } }); if(s.data?.data?.totalPrice) shipCost = parseFloat(s.data.data.totalPrice); } catch(e) {}
             const base = parseFloat(prod.sellPrice) || 2;
             const calculatedPrice = ((base + shipCost) * 1.4); const finalPrice = Math.floor(calculatedPrice) + 0.99; const profit = (finalPrice - base - shipCost).toFixed(2);
-            const prompt = `Product: ${prod.productNameEn}. JSON: {"seo_title":"Amazon viral title","seo_desc":"2 line desc","specs":"Material: Premium|Shipping: FREE Worldwide|Warranty: 1 Year"}`;
-            const r = await askAI(prompt);
+            const r = await askAI(`Product: ${prod.productNameEn}. JSON: {"seo_title":"Amazon viral title","seo_desc":"2 line desc","specs":"Material: Premium|Shipping: FREE|Warranty: 1 Year"}`);
             if(r) { const d = JSON.parse(r); await supabase.from('store_products').insert({ cj_product_id: prod.productId, name: d.seo_title, description: d.seo_desc, specs: d.specs, image: prod.productImage, price_usd: finalPrice.toFixed(2), affiliate_link: prod.productUrl, cj_pid: prod.productId, cj_vid: prod.defaultVariantId, cj_base_cost: base.toFixed(2), cj_shipping_cost: shipCost.toFixed(2), profit_margin: profit }); }
         }
         sendTelegramAlert('🤖 <b>Daily Import Done!</b>\nNew products added to store with smart pricing.');
-    } catch(e) { console.error("Cron Product Error:", e.message); }
+    } catch(e) { console.error("Cron Error:", e.message); }
 });
 
-// CRON 2: POWER SEO BLOG + UNSPLASH IMAGES (8 AM Daily)
+// CRON 2: POWER SEO BLOG (8 AM Daily)
 cron.schedule('0 8 * * *', async () => {
     if(!GROQ_KEY || !BLOGGER_REFRESH_TOKEN) return;
     try {
@@ -176,26 +201,22 @@ cron.schedule('0 8 * * *', async () => {
         if(!prods || prods.length === 0) return;
 
         let imageUrl = 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800'; 
-        if(UNSPLASH_KEY) {
-            try { const unsplashRes = await axios.get(`https://api.unsplash.com/photos/random?query=gadgets+technology&client_id=${UNSPLASH_KEY}`); imageUrl = unsplashRes.data.urls.regular; } catch(e) {}
-        }
+        if(UNSPLASH_KEY) { try { const unsplashRes = await axios.get(`https://api.unsplash.com/photos/random?query=gadgets+technology&client_id=${UNSPLASH_KEY}`); imageUrl = unsplashRes.data.urls.regular; } catch(e) {} }
 
-        const prodLinks = prods.map(p => `<div style="margin-bottom: 15px; padding: 15px; border: 1px solid #eee; border-radius: 8px;"><h3><a href="https://yourwebsite.com/product/${p.id}">${p.name}</a></h3><p>Price: $${p.price_usd} (FREE Worldwide Shipping)</p><a href="https://yourwebsite.com/product/${p.id}" style="background: #2563eb; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display:inline-block; margin-top:5px;">Buy Now →</a></div>`).join('');
+        const prodLinks = prods.map(p => `<div style="margin-bottom: 15px; padding: 15px; border: 1px solid #eee; border-radius: 8px;"><h3><a href="https://yourwebsite.com/product/${p.id}">${p.name}</a></h3><p>Price: $${p.price_usd} (FREE Shipping)</p><a href="https://yourwebsite.com/product/${p.id}" style="background: #2563eb; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px;">Buy Now →</a></div>`).join('');
 
-        const prompt = `Write a highly SEO optimized 1500-word blog post titled "Top 10 Must-Have Gadgets Under $50 for ${new Date().getFullYear()}". Use H2, H3 tags, bullet points, and bold texts. Include an introduction, a "Top Picks" section where these products naturally fit in: ${prodLinks}, and a conclusion. Output raw HTML only.`;
+        const prompt = `Write a highly SEO optimized 1500-word blog post titled "Top 10 Must-Have Gadgets Under $50 for ${new Date().getFullYear()}". Use H2, H3 tags, bullet points, bold texts. Include introduction, "Top Picks" section with these products: ${prodLinks}, and conclusion. Output raw HTML only.`;
         const htmlContent = await askAI(prompt);
         if(!htmlContent) return;
 
         const finalHtml = `<img src="${imageUrl}" alt="Best Gadgets" style="width:100%; border-radius: 10px; margin-bottom: 20px;"/> <br/> ${htmlContent}`;
-
-        const tokenRes = await axios.post('https://oauth2.googleapis.com/token', { client_id: BLOGGER_CLIENT_ID, client_secret: BLOGGER_CLIENT_SECRET, refresh_token: BLOGGER_REFRESH_TOKEN, grant_type: 'refresh_token' });
-        const accessToken = tokenRes.data.access_token;
+        const accessToken = await getBloggerToken();
 
         await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts`, {
-            kind: 'blogger#post', title: `Top Trending Gadgets & Best Deals - ${new Date().toLocaleDateString()}`, content: finalHtml
+            kind: 'blogger#post', title: `Top Trending Gadgets & Deals - ${new Date().toLocaleDateString()}`, content: finalHtml
         }, { headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' } });
         
-        sendTelegramAlert('📝 <b>SEO Blog Live!</b>\nA new high-ranking blog with Unsplash images & product links has been posted.');
+        sendTelegramAlert('📝 <b>SEO Blog Live!</b>\nNew blog with images & product links posted.');
     } catch(e) { console.error("Blog Cron Error:", e.response?.data || e.message); }
 });
 
@@ -206,17 +227,15 @@ cron.schedule('0 12 * * *', async () => {
         const { data: prods } = await supabase.from('store_products').select('*').limit(1).order('created_at', { ascending: false });
         if(!prods || prods.length === 0) return;
         const p = prods[0];
-
         await axios.post('https://api.pinterest.com/v5/pins', {
             board_id: PINTEREST_BOARD_ID, title: p.name,
-            description: `${p.description} Get it for just $${p.price_usd} with FREE Worldwide Shipping! #gadgets #trending #shopping`,
+            description: `${p.description} Get it for $${p.price_usd} with FREE Worldwide Shipping! #gadgets #trending`,
             link: `https://yourwebsite.com/product/${p.id}`,
             media_source: { source_type: "image_url", url: p.image }
         }, { headers: { 'Authorization': `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
-        
-        sendTelegramAlert('📌 <b>Pinterest Pin Live!</b>\nNew product pinned with viral hashtags for traffic.');
+        sendTelegramAlert('📌 <b>Pinterest Pin Live!</b>\nProduct pinned for traffic.');
     } catch(e) { console.error("Pinterest Error:", e.response?.data || e.message); }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('🚀 PilotBot God Mode V5 Running!'));
+app.listen(PORT, () => console.log('🚀 PilotBot V5 Running!'));
