@@ -5,15 +5,13 @@ const { ApifyClient } = require('apify-client');
 const axios = require('axios');
 const cron = require('node-cron');
 const cors = require('cors');
-const { Resend } = require('resend'); // Make sure 'resend' install ho (npm install resend)
+const { Resend } = require('resend');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ==========================================
-// 🛠️ ENV VARIABLES
-// ==========================================
+// ENV Variables
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
 const GROQ_KEY = process.env.GROQ_KEY; 
@@ -31,23 +29,23 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'super_secret_admin_token_Mrhamdu123@';
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const INDEXNOW_KEY = process.env.INDEXNOW_KEY || 'pilotbotindexkey123'; // IndexNow Key
+const INDEXNOW_KEY = process.env.INDEXNOW_KEY || 'pilotbotindexkey123';
 
 const supabase = createClient(SB_URL, SB_KEY);
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
-const resend = new Resend(RESEND_API_KEY); // Resend Init
+const resend = new Resend(RESEND_API_KEY);
 
 const WEBSITE_URL = "https://affiliatepilot-frontend.vercel.app";
 
 // ==========================================
-// 🧠 CORE HELPER FUNCTIONS
+// CORE HELPER FUNCTIONS
 // ==========================================
 async function askAI(prompt) {
     try {
         const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
             model: "llama-3.3-70b-versatile",
             messages: [
-                { role: "system", content: "You are a world-class viral tech blog writer for top sites like Wirecutter and Tom's Guide. Always output STRICT, STYLISH HTML." },
+                { role: "system", content: "You are a world-class viral tech blog writer. Always output STRICT HTML." },
                 { role: "user", content: prompt }
             ],
             temperature: 0.7,
@@ -57,7 +55,7 @@ async function askAI(prompt) {
 }
 
 async function sendTelegramAlert(message) {
-    if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return console.log("Telegram vars missing");
+    if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
     try {
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { 
             chat_id: TELEGRAM_CHAT_ID, text: message, parse_mode: "HTML" 
@@ -85,10 +83,10 @@ async function getUnsplashImage(query) {
 }
 
 // ==========================================
-// 🚀 GOD MODE V7 NEW FUNCTIONS
+// GOD MODE V7 NEW FUNCTIONS
 // ==========================================
 
-// 1. Google IndexNow Ping (Instant Indexing)
+// 1. Google IndexNow Ping
 async function pingIndexNow(productUrl) {
     try {
         await axios.post('https://api.indexnow.org/IndexNow', {
@@ -100,49 +98,38 @@ async function pingIndexNow(productUrl) {
     } catch(e) { console.error("IndexNow Error:", e.message); }
 }
 
-// 2. Auto CJ Dropshipping Order Fulfillment
+// 2. Auto CJ Order Fulfillment
 async function autoFulfillCJOrder(orderData) {
     if(!CJ_ACCESS_TOKEN) return console.log("CJ Token missing, skipping auto-fulfillment");
-    
     try {
         const cjRes = await axios.post('https://developers.cjdropshipping.com/api/v1/orders', {
             orderType: 1,
             shippingMethod: "Standard Shipping",
-            orderItems: orderData.products.map(p => ({
-                vid: p.cj_variant_id, // IMPORTANT: Supabase mein cj_variant_id save hona chahiye
-                quantity: 1
-            })),
+            orderItems: orderData.products.map(p => ({ vid: p.cj_variant_id, quantity: 1 })),
             shippingAddress: {
-                country: orderData.buyer_address.country,
-                province: orderData.buyer_address.state,
-                city: orderData.buyer_address.city,
-                streetAddress: orderData.buyer_address.address,
-                zipCode: orderData.buyer_address.zip,
-                consigneeName: orderData.buyer_address.fullName,
+                country: orderData.buyer_address.country, province: orderData.buyer_address.state,
+                city: orderData.buyer_address.city, streetAddress: orderData.buyer_address.address,
+                zipCode: orderData.buyer_address.zip, consigneeName: orderData.buyer_address.fullName,
                 phone: orderData.buyer_address.phone
             }
-        }, {
-            headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN }
-        });
+        }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
 
         if(cjRes.data && cjRes.data.code === 200) {
             await supabase.from('orders').update({ 
-                status: 'Processing in CJ',
-                cj_order_id: cjRes.data.data.orderId 
+                status: 'Processing in CJ', cj_order_id: cjRes.data.data.orderId 
             }).eq('paypal_order_id', orderData.paypal_order_id);
-            
             sendTelegramAlert(`✅ <b>CJ Order Auto-Placed!</b>\n📦 CJ Order ID: ${cjRes.data.data.orderId}`);
         } else {
-            sendTelegramAlert(`⚠️ <b>CJ Auto-Order Failed!</b>\nReason: ${cjRes.data.message}\nManual check required.`);
+            sendTelegramAlert(`⚠️ <b>CJ Auto-Order Failed!</b>\nReason: ${cjRes.data.message}`);
         }
     } catch(e) {
         console.error("CJ Fulfillment Error:", e.response?.data || e.message);
-        sendTelegramAlert(`🚨 <b>CJ API ERROR!</b>\nOrder placement failed. Do it manually.`);
+        sendTelegramAlert(`🚨 <b>CJ API ERROR!</b>\nOrder placement failed.`);
     }
 }
 
 // ==========================================
-// 🌐 API ROUTES
+// API ROUTES
 // ==========================================
 
 app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V7 is AWAKE!'));
@@ -170,8 +157,6 @@ app.post('/api/save-order', async (req, res) => {
     if(error) return res.json({ success: false, error });
     
     sendTelegramAlert(`🚨 <b>New Order!</b>\n💰 Price: $${total_price}\n📈 Profit: $${total_profit}\n📦 Product: ${products.map(p=>p.name).join(', ')}`);
-    
-    // 🤖 AUTO FULFILL: Bot turant CJ pe order place karega
     autoFulfillCJOrder({ paypal_order_id, products, buyer_email, buyer_address });
 
     res.json({ success: true, order: orderData });
@@ -199,25 +184,22 @@ app.get('/api/admin/stats', async (req, res) => {
     } catch(e) { res.json({ success: false, error: e.message }); }
 });
 
-// INDEXNOW PING ROUTE (Frontend isko call karega jab naya product add ho)
+// INDEXNOW PING ROUTE
 app.post('/api/notify-product-added', async (req, res) => {
     const { productId } = req.body;
     if(productId) {
         pingIndexNow(`${WEBSITE_URL}/product/${productId}`);
         res.json({ success: true, message: "Google Notified via IndexNow!" });
-    } else {
-        res.json({ success: false });
-    }
+    } else { res.json({ success: false }); }
 });
 
-// ABANDONED CART EMAIL (Resend API)
+// ABANDONED CART EMAIL
 app.post('/api/abandoned-cart', async (req, res) => {
     const { email, productName, productImage } = req.body;
     if(!email || !RESEND_API_KEY) return res.json({ success: false });
-
     try {
         await resend.emails.send({
-            from: 'AffiliatePilot <noreply@yourdomain.com>', // ⚠️ Isko apne verified Resend domain se replace karo
+            from: 'AffiliatePilot <noreply@yourdomain.com>',
             to: email,
             subject: `🔥 You forgot something! Special discount inside.`,
             html: `<div style="font-family:Arial; text-align:center;">
@@ -228,37 +210,22 @@ app.post('/api/abandoned-cart', async (req, res) => {
                    </div>`
         });
         res.json({ success: true });
-    } catch(e) {
-        console.error("Resend Error:", e.message);
-        res.json({ success: false });
-    }
+    } catch(e) { console.error("Resend Error:", e.message); res.json({ success: false }); }
 });
 
 // ELEVENLABS VOICEOVER GENERATOR
 app.post('/api/generate-voiceover', async (req, res) => {
     const { text } = req.body;
     if(!ELEVENLABS_API_KEY) return res.status(400).json({ error: "ElevenLabs API Key missing" });
-    
     try {
         const voiceRes = await axios.post(`https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM`, {
-            text: text,
-            model_id: "eleven_multilingual_v2",
+            text: text, model_id: "eleven_multilingual_v2",
             voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-        }, {
-            headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
-            responseType: 'arraybuffer'
-        });
+        }, { headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' }, responseType: 'arraybuffer' });
         res.setHeader('Content-Type', 'audio/mpeg');
         res.send(voiceRes.data);
-    } catch(e) {
-        console.error("ElevenLabs Error:", e.message);
-        res.status(500).json({ error: "Voice generation failed" });
-    }
+    } catch(e) { console.error("ElevenLabs Error:", e.message); res.status(500).json({ error: "Voice generation failed" }); }
 });
-
-// ==========================================
-// ⏰ CRON JOBS (Add your existing cron jobs here)
-// ==========================================
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🤖 PilotBot God Mode V7 is AWAKE on port ${PORT}!`));
