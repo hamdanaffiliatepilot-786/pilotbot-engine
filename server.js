@@ -27,7 +27,8 @@ const BLOG_ID = process.env.BLOG_ID;
 const PINTEREST_TOKEN = process.env.PINTEREST_TOKEN;
 const PINTEREST_BOARD_ID = process.env.PINTEREST_BOARD_ID;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID; // For Private Admin Alerts
+const TELEGRAM_CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID; // For Public Channel Deals
 const TWITTER_API_KEY = process.env.TWITTER_API_KEY;
 const TWITTER_API_SECRET = process.env.TWITTER_API_SECRET;
 const TWITTER_ACCESS_TOKEN = process.env.TWITTER_ACCESS_TOKEN;
@@ -60,13 +61,24 @@ async function askAI(prompt) {
     } catch(e) { console.error("AI Error:", e.message); return null; }
 }
 
+// 1. PRIVATE ADMIN ALERTS (Only for you)
 async function sendTelegramAlert(message) {
     if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
     try {
         await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { 
             chat_id: TELEGRAM_CHAT_ID, text: message, parse_mode: "HTML" 
         });
-    } catch(e) { console.error("Telegram Error:", e.response?.data || e.message); }
+    } catch(e) { console.error("Telegram Admin Alert Error:", e.response?.data || e.message); }
+}
+
+// 2. PUBLIC CHANNEL DEALS (For your subscribers)
+async function sendTelegramChannelDeal(message) {
+    if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) return;
+    try {
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { 
+            chat_id: TELEGRAM_CHANNEL_ID, text: message, parse_mode: "HTML" 
+        });
+    } catch(e) { console.error("Telegram Channel Deal Error:", e.response?.data || e.message); }
 }
 
 async function getBloggerToken() {
@@ -132,6 +144,9 @@ async function runGodModePipeline() {
             const productLink = `${WEBSITE_URL}/product/${newProduct.id}`;
             pingIndexNow(productLink);
 
+            // 📢 SEND DEAL TO TELEGRAM CHANNEL (Public)
+            await sendTelegramChannelDeal(`🆕 <b>New Winning Product Live!</b>\n📦 ${productName}\n💰 $${productPrice} (FREE Worldwide Shipping)\n🔗 <a href="${productLink}">Shop Now!</a>`);
+
             // HIGH SEO BLOG GENERATION
             if(BLOG_ID) {
                 const blogPrompt = `You are an elite SEO affiliate blogger for "Affiliate Pilot". Write a highly SEO-optimized, honest, and engaging product review blog post for: "${productName}" (Price: $${productPrice}).
@@ -161,6 +176,7 @@ async function runGodModePipeline() {
                     await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
                         kind: 'blogger#post', title: `${productName} Review: Is It Worth Buying? Pros & Cons`, content: blogHTML
                     }, { headers: { Authorization: `Bearer ${bToken}` } });
+                    sendTelegramAlert(`✅ <b>Blog Posted:</b> ${productName}`); // Private Alert
                 }
             }
 
@@ -177,7 +193,11 @@ async function runGodModePipeline() {
                         link: productLink,
                         media_source: { source_type: "image_url", url: productImage }
                     }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
-                } catch(pinErr) { console.error("Pinterest Error:", pinErr.response?.data); }
+                    sendTelegramAlert(`✅ <b>Pinterest Pinned:</b> ${productName}`); // Private Alert
+                } catch(pinErr) { 
+                    console.error("Pinterest Error:", pinErr.response?.data); 
+                    sendTelegramAlert(`❌ <b>Pinterest Failed:</b> ${productName}`);
+                }
             }
 
             // Twitter Post
@@ -185,10 +205,12 @@ async function runGodModePipeline() {
                 try {
                     const tweetText = `🚨 Honest Review Alert: ${productName}!\n\n✅ Premium Quality\n🚚 FREE Worldwide Shipping\n💰 Only $${productPrice}\n\nIs it worth the hype? Read our full review 👇\n${productLink}\n\n#TechGadgets #SmartShopping #HonestReview`;
                     await twitterClient.v2.tweet(tweetText);
-                } catch(twitErr) { console.error("Twitter Error:", twitErr.message); }
+                    sendTelegramAlert(`✅ <b>Twitter Tweeted:</b> ${productName}`); // Private Alert
+                } catch(twitErr) { 
+                    console.error("Twitter Error:", twitErr.message); 
+                    sendTelegramAlert(`❌ <b>Twitter Failed:</b> ${productName}`);
+                }
             }
-
-            await sendTelegramAlert(`🆕 <b>Full SEO Product Live!</b>\n📦 ${productName}\n💰 $${productPrice}\n🔗 <a href="${productLink}">View Product</a>\n\n✅ Blog Posted\n✅ Pinterest Pinned\n✅ Twitter Tweeted`);
 
             await new Promise(r => setTimeout(r, 10000)); 
         }
@@ -205,11 +227,19 @@ async function runGodModePipeline() {
 app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V8 (SEO Traffic Monster) is AWAKE!'));
 
 app.get('/test-telegram', async (req, res) => {
-    if(!TELEGRAM_BOT_TOKEN) return res.send("❌ TELEGRAM_BOT_TOKEN missing");
+    if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return res.send("❌ TELEGRAM_CHAT_ID missing");
     try {
-        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { chat_id: TELEGRAM_CHAT_ID, text: "🚀 PilotBot V8 Test: Telegram is working perfectly!" });
-        res.send("✅ Telegram Message Sent!");
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { chat_id: TELEGRAM_CHAT_ID, text: "🚀 Admin Test: Bot is working perfectly in your private chat!" });
+        res.send("✅ Admin Message Sent to your private chat!");
     } catch(e) { res.send(`❌ Error: ${e.response?.data?.description}`); }
+});
+
+app.get('/test-channel', async (req, res) => {
+    if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHANNEL_ID) return res.send("❌ TELEGRAM_CHANNEL_ID missing");
+    try {
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { chat_id: TELEGRAM_CHANNEL_ID, text: "📢 Channel Test: Deal alerts are working perfectly in your channel!" });
+        res.send("✅ Deal Message Sent to your channel!");
+    } catch(e) { res.send(`❌ Error: ${e.response?.data?.description}. Make sure Bot is Admin in the channel.`); }
 });
 
 app.get('/test-twitter', async (req, res) => {
@@ -218,43 +248,47 @@ app.get('/test-twitter', async (req, res) => {
         await twitterClient.v2.tweet("🤖 PilotBot V8 Test: Twitter integration is working! #SEO #Traffic");
         res.send("✅ Tweet Posted Successfully!");
     } catch(e) { 
-        res.send(`❌ Error: ${e.message}. Fix: Set App Permissions to Read and Write in Twitter Dev Portal and Regenerate Access Tokens.`); 
+        res.send(`❌ Error: ${e.message}.`); 
     }
 });
 
-app.get('/test-pinterest', async (req, res) => {
-    if(!PINTEREST_TOKEN) return res.send("❌ PINTEREST_TOKEN missing");
-    res.send("✅ Pinterest Token Loaded. Ready to pin trending content!");
-});
-
-// Manual Trigger for Daily Pipeline
 app.get('/run-pipeline', async (req, res) => {
-    res.send("🚀 God Mode V8 Pipeline Triggered! Check Telegram for step-by-step updates.");
+    res.send("🚀 God Mode V8 Pipeline Triggered! Check Telegram for updates.");
     runGodModePipeline();
 });
 
-// 🔥 POWERFUL INSTANT PINTEREST PINNER (WITH TELEGRAM LIVE DEBUGGING)
+// 🔥 SUPER DEBUG PINTEREST PINNER
 app.get('/pin-now', async (req, res) => {
     if(!PINTEREST_TOKEN || !PINTEREST_BOARD_ID) {
-        return res.send("❌ Error: PINTEREST_TOKEN or PINTEREST_BOARD_ID is missing in Render Env!");
+        await sendTelegramAlert("❌ /pin-now failed: Pinterest Token or Board ID missing.");
+        return res.send("❌ Error: PINTEREST_TOKEN or PINTEREST_BOARD_ID is missing!");
     }
+    
+    await sendTelegramAlert("🚀 <b>/pin-now Command Received!</b> Starting process...");
     
     try {
         const { data: products, error } = await supabase.from('store_products').select('*').order('created_at', { ascending: false });
         
         if(error || !products || products.length === 0) {
-            return res.send("❌ No products found in Supabase! Add products first or run /run-pipeline.");
+            await sendTelegramAlert("⚠️ No products found in Supabase to pin!");
+            return res.send("❌ No products found!");
         }
 
-        res.send(`⏳ Pinning ${products.length} products... I will send a Telegram message for EACH pin (Success or Error). Check Telegram NOW!`);
+        await sendTelegramAlert(`✅ Found ${products.length} products. Starting Pinterest loop...`);
+        res.send(`⏳ Pinning ${products.length} products... Check Telegram for REAL-TIME updates!`);
 
         for(const p of products) {
-            const productLink = `${WEBSITE_URL}/product/${p.id}`;
-            
-            const pinTitle = await askAI(`Write a catchy Pinterest title for: ${p.name}. Output ONLY the title.`);
-            const pinDesc = await askAI(`Write a Pinterest description for ${p.name} ($${p.price_usd}). Include link: ${productLink} and hashtags. Output ONLY description.`);
-
             try {
+                const productLink = `${WEBSITE_URL}/product/${p.id}`;
+                
+                await sendTelegramAlert(`🔄 Working on: <b>${p.name}</b>... Generating AI Title...`);
+                const pinTitle = await askAI(`Write a catchy Pinterest title for: ${p.name}. Output ONLY the title.`);
+                
+                await sendTelegramAlert(`🔄 Working on: <b>${p.name}</b>... Generating AI Description...`);
+                const pinDesc = await askAI(`Write a Pinterest description for ${p.name} ($${p.price_usd}). Include link: ${productLink} and hashtags. Output ONLY description.`);
+
+                await sendTelegramAlert(`🔄 Working on: <b>${p.name}</b>... Sending to Pinterest API...`);
+
                 await axios.post(`https://api.pinterest.com/v5/pins`, {
                     board_id: PINTEREST_BOARD_ID, 
                     title: pinTitle || `${p.name} - Must Have!`, 
@@ -263,18 +297,22 @@ app.get('/pin-now', async (req, res) => {
                     media_source: { source_type: "image_url", url: p.image }
                 }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
                 
+                // Private Alert
                 await sendTelegramAlert(`✅ <b>Pinterest Pin Created!</b>\n📦 ${p.name}`);
-                console.log(`✅ Pinned: ${p.name}`);
+                // Public Channel Deal
+                await sendTelegramChannelDeal(`🔥 <b>Trending Deal!</b>\n📦 ${p.name}\n💰 $${p.price_usd}\n🔗 <a href="${productLink}">Shop Now!</a>`);
+            
             } catch(pinErr) { 
                 const errorDetails = pinErr.response?.data ? JSON.stringify(pinErr.response.data) : pinErr.message;
-                console.error(`❌ Pin Error for ${p.name}:`, errorDetails);
                 await sendTelegramAlert(`❌ <b>Pinterest Pin FAILED!</b>\n📦 Product: ${p.name}\n⚠️ Error: ${errorDetails}`);
             }
             await new Promise(r => setTimeout(r, 3000)); 
         }
         
+        await sendTelegramAlert("🎉 <b>Bulk Pinning Process Completed!</b>");
+        
     } catch(e) {
-        console.error("Bulk Pin Error:", e);
+        await sendTelegramAlert(`🚨 <b>Major Crash in /pin-now!</b>\nError: ${e.message}`);
     }
 });
 
