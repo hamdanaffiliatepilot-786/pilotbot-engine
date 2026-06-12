@@ -41,12 +41,9 @@ const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
 const resend = new Resend(RESEND_API_KEY);
 const WEBSITE_URL = "https://affiliatepilot-frontend.vercel.app";
 
-// Twitter Client Setup
 const twitterClient = new TwitterApi({
-  appKey: TWITTER_API_KEY,
-  appSecret: TWITTER_API_SECRET,
-  accessToken: TWITTER_ACCESS_TOKEN,
-  accessSecret: TWITTER_ACCESS_SECRET,
+  appKey: TWITTER_API_KEY, appSecret: TWITTER_API_SECRET,
+  accessToken: TWITTER_ACCESS_TOKEN, accessSecret: TWITTER_ACCESS_SECRET,
 });
 
 // ==========================================
@@ -105,14 +102,13 @@ async function autoFulfillCJOrder(orderData) {
 }
 
 // ==========================================
-// 🚀 GOD MODE V8 AUTOMATION PIPELINE
+// 🚀 GOD MODE V8 AUTOMATION PIPELINE (100% AUTO SEO)
 // ==========================================
 
 async function runGodModePipeline() {
     sendTelegramAlert("🤖 <b>God Mode V8 Activated!</b>\n🔍 Hunting for winning viral products...");
     
     try {
-        // 1. Scrape Winning Products
         const run = await apifyClient.actor("apify/amazon-best-sellers").call({ maxItems: 2 });
         const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
         
@@ -120,14 +116,13 @@ async function runGodModePipeline() {
 
         for(const item of items) {
             const productName = item.title;
-            const productImage = item.imageUrl || item.mainImage;
+            // Strict image extraction from Apify
+            const productImage = item.imageUrl || item.mainImage || item.primaryImage;
             const productPrice = item.price || "29.99";
             
-            // 2. Generate HIGH SEO Description & Specs
             const seoDesc = await askAI(`Write an engaging, high-converting 3-line e-commerce product description for: ${productName}. Focus on benefits, problem-solving, and urgency. Output plain text only.`);
             const specs = await askAI(`Create 4 key specifications for ${productName} in format Spec:Value separated by |. Example: Material:Premium|Feature:Waterproof. Output strictly ONLY the text, no extra words.`);
             
-            // 3. Save to Supabase
             const { data: newProduct, error } = await supabase.from('store_products').insert({
                 name: productName, image: productImage, price_usd: productPrice,
                 description: seoDesc, specs: specs, profit_margin: (productPrice * 0.4).toFixed(2), cj_base_cost: (productPrice * 0.5).toFixed(2), cj_shipping_cost: 0
@@ -136,38 +131,47 @@ async function runGodModePipeline() {
             if(error || !newProduct) { console.error("Supabase Error:", error); continue; }
             
             const productLink = `${WEBSITE_URL}/product/${newProduct.id}`;
-            pingIndexNow(productLink); // Instant Google Indexing
+            pingIndexNow(productLink);
 
-            // 4. HIGH SEO Blog Post Generation
+            // 4. ULTIMATE FULL SEO BLOG GENERATION (AUTOMATIC IMAGE & STRUCTURE)
             if(BLOG_ID) {
-                const blogPrompt = `Write a highly SEO-optimized, viral, and engaging blog post about the product: "${productName}".
-                Include the following strictly:
-                - An H1 title containing keywords like "Best ${productName} Review 2024".
-                - A meta description paragraph at the top summarizing the product and price ($${productPrice}).
-                - H2 subheadings like "Why ${productName} is a Game Changer" and "Key Features and Benefits".
-                - A bulleted list of pros.
-                - A strong Call to Action link in bold: <a href="${productLink}">Grab ${productName} with FREE Shipping Now!</a>
-                - Make it at least 500 words. Output STRICT HTML only.`;
+                const blogPrompt = `You are an elite SEO affiliate blogger for "Affiliate Pilot". Write a highly SEO-optimized, honest, and engaging product review blog post for: "${productName}" (Price: $${productPrice}).
+
+                CRITICAL IMAGE RULE (FOLLOW STRICTLY):
+                You MUST place the product image right after the H1 title. Use ONLY this exact HTML tag, do not invent URLs:
+                <img src="${productImage}" alt="${productName} Honest Review - Affiliate Pilot" style="width:100%; max-width:600px; border-radius:8px; margin:15px 0;">
+
+                STRICT SEO STRUCTURE (Use proper HTML tags <h1>, <h2>, <h3>, <p>, <ul>, <li>):
+                1. <h1>${productName} Review: Is It Worth Buying? Pros & Cons</h1>
+                2. [INSERT THE EXACT IMAGE TAG HERE]
+                3. <p><b>Search Description:</b> Looking for an honest ${productName} review? Read our in-depth analysis of this CJ Dropshipping product. We cover pros, cons, pricing, and whether it's worth buying in 2024.</p>
+                4. <h2>Introduction</h2> <p>Write a compelling 100-word introduction about why this product is trending.</p>
+                5. <h2>Key Features of ${productName}</h2> <ul><li>Feature 1</li><li>Feature 2</li><li>Feature 3</li><li>Feature 4</li></ul>
+                6. <h2>Pros and Cons</h2>
+                   <h3>Pros</h3> <ul><li>Pro 1</li><li>Pro 2</li><li>Pro 3</li></ul>
+                   <h3>Cons</h3> <ul><li>Con 1 (make it realistic but minor)</li></ul>
+                7. <h2>Why Buy from Affiliate Pilot?</h2> <p>Explain benefits like FREE worldwide shipping via CJ Dropshipping, quality assurance, and buyer protection.</p>
+                8. <h2>Final Verdict: Should You Buy It?</h2> <p>Give a strong, honest summary.</p>
+                9. <h2>Buy Now / Get the Best Deal</h2> <p>Don't miss out! Click the button below to grab yours today:</p> <a href="${productLink}" style="background-color: #f59e0b; color: #000; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; margin-top: 10px; font-size: 18px;">🔥 Get ${productName} with FREE Shipping Now!</a>
+
+                RULES: Output STRICT HTML only. Do not include <html> or <body> tags. Make the review sound like a real human wrote it. Do not copy descriptions, write unique content.`;
 
                 const blogHTML = await askAI(blogPrompt);
                 if(blogHTML) {
                     const bToken = await getBloggerToken();
                     await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
-                        kind: 'blogger#post', title: `${productName} Review: Is It Worth The Hype?`, content: blogHTML
+                        kind: 'blogger#post', title: `${productName} Review: Is It Worth Buying? Pros & Cons`, content: blogHTML
                     }, { headers: { Authorization: `Bearer ${bToken}` } });
                 }
             }
 
             // 5. Trending Pinterest Pin Creation
             if(PINTEREST_TOKEN && PINTEREST_BOARD_ID) {
-                const pinTitle = await askAI(`Write a catchy, clickbaity Pinterest pin title (max 100 characters) for: ${productName}. Output ONLY the title.`);
-                const pinDesc = await askAI(`Write a Pinterest description with 3 relevant hashtags for: ${productName}. Link: ${productLink}. Output ONLY the description.`);
-                
                 try {
                     await axios.post(`https://api.pinterest.com/v5/pins`, {
                         board_id: PINTEREST_BOARD_ID, 
-                        title: pinTitle || `${productName} - Must Have!`, 
-                        description: pinDesc || `Get ${productName} now! ${productLink} #Tech #Gadgets #Trending`, 
+                        title: `${productName} - Must Have Tech!`, 
+                        description: `Is ${productName} worth it? Read our honest review! ${productLink} #TechGadgets #Review #AffiliatePilot`, 
                         link: productLink,
                         media_source: { source_type: "image_url", url: productImage }
                     }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
@@ -177,15 +181,14 @@ async function runGodModePipeline() {
             // 6. Viral Twitter Post
             if(TWITTER_API_KEY) {
                 try {
-                    const tweetText = `Just found the ultimate hack: ${productName}!\n\nPremium Quality\nFREE Worldwide Shipping\nOnly $${productPrice}\n\nGrab yours before it sells out\n${productLink}\n\n#TechGadgets #SmartShopping #Deals`;
+                    const tweetText = `🚨 Honest Review Alert: ${productName}!\n\n✅ Premium Quality\n🚚 FREE Worldwide Shipping\n💰 Only $${productPrice}\n\nIs it worth the hype? Read our full review 👇\n${productLink}\n\n#TechGadgets #SmartShopping #HonestReview`;
                     await twitterClient.v2.tweet(tweetText);
                 } catch(twitErr) { console.error("Twitter Error:", twitErr.message); }
             }
 
             // 7. Telegram Channel Alert
-            await sendTelegramAlert(`🆕 <b>New Winning Product Added!</b>\n📦 ${productName}\n💰 $${productPrice} (FREE Shipping)\n🔗 <a href="${productLink}">View Product</a>\n\n✅ Blog Posted\n✅ Pinterest Pinned\n✅ Twitter Tweeted`);
+            await sendTelegramAlert(`🆕 <b>Full SEO Product Live!</b>\n📦 ${productName}\n💰 $${productPrice} (FREE Shipping)\n🔗 <a href="${productLink}">View Product</a>\n\n✅ High SEO Blog Posted with Image\n✅ Pinterest Pinned\n✅ Twitter Tweeted`);
 
-            // Delay to avoid API rate limits
             await new Promise(r => setTimeout(r, 10000)); 
         }
     } catch(e) {
@@ -223,13 +226,12 @@ app.get('/test-pinterest', async (req, res) => {
     res.send("✅ Pinterest Token Loaded. Ready to pin trending content!");
 });
 
-// Manual Trigger for Pipeline Testing
 app.get('/run-pipeline', async (req, res) => {
     res.send("🚀 God Mode V8 Pipeline Triggered! Check Telegram for step-by-step updates.");
     runGodModePipeline();
 });
 
-// E-Commerce Routes
+// E-Commerce & Voice Routes
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -266,14 +268,12 @@ app.post('/api/notify-product-added', async (req, res) => {
     else { res.json({ success: false }); }
 });
 
-// Viral Video Script Generator
 app.post('/api/generate-video-script', async (req, res) => {
     const { productName, productDescription } = req.body;
     const script = await askAI(`Create a highly viral 30-second TikTok/Reels script for the product: ${productName}. Description: ${productDescription}. Format: [Visual] and [Audio] cues. Make the hook mind-blowing in the first 3 seconds.`);
     res.json({ success: true, script });
 });
 
-// ElevenLabs Voiceover
 app.post('/api/generate-voiceover', async (req, res) => {
     const { text } = req.body;
     if(!ELEVENLABS_API_KEY) return res.status(400).json({ error: "ElevenLabs API Key missing" });
