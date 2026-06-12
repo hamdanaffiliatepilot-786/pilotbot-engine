@@ -102,7 +102,7 @@ async function autoFulfillCJOrder(orderData) {
 }
 
 // ==========================================
-// 🚀 GOD MODE V8 AUTOMATION PIPELINE (100% AUTO SEO)
+// 🚀 GOD MODE V8 AUTOMATION PIPELINE
 // ==========================================
 
 async function runGodModePipeline() {
@@ -116,8 +116,7 @@ async function runGodModePipeline() {
 
         for(const item of items) {
             const productName = item.title;
-            // Strict image extraction from Apify
-            const productImage = item.imageUrl || item.mainImage || item.primaryImage;
+            const productImage = item.imageUrl || item.mainImage;
             const productPrice = item.price || "29.99";
             
             const seoDesc = await askAI(`Write an engaging, high-converting 3-line e-commerce product description for: ${productName}. Focus on benefits, problem-solving, and urgency. Output plain text only.`);
@@ -133,7 +132,7 @@ async function runGodModePipeline() {
             const productLink = `${WEBSITE_URL}/product/${newProduct.id}`;
             pingIndexNow(productLink);
 
-            // 4. ULTIMATE FULL SEO BLOG GENERATION (AUTOMATIC IMAGE & STRUCTURE)
+            // HIGH SEO BLOG GENERATION
             if(BLOG_ID) {
                 const blogPrompt = `You are an elite SEO affiliate blogger for "Affiliate Pilot". Write a highly SEO-optimized, honest, and engaging product review blog post for: "${productName}" (Price: $${productPrice}).
 
@@ -165,20 +164,23 @@ async function runGodModePipeline() {
                 }
             }
 
-            // 5. Trending Pinterest Pin Creation
+            // Pinterest Pin inside Pipeline
             if(PINTEREST_TOKEN && PINTEREST_BOARD_ID) {
                 try {
+                    const pinTitle = await askAI(`Write a catchy, clickbaity Pinterest pin title (max 100 characters) for: ${productName}. Output ONLY the title.`);
+                    const pinDesc = await askAI(`Write a viral Pinterest description with 3 relevant hashtags for: ${productName}. Link: ${productLink}. Output ONLY the description.`);
+                    
                     await axios.post(`https://api.pinterest.com/v5/pins`, {
                         board_id: PINTEREST_BOARD_ID, 
-                        title: `${productName} - Must Have Tech!`, 
-                        description: `Is ${productName} worth it? Read our honest review! ${productLink} #TechGadgets #Review #AffiliatePilot`, 
+                        title: pinTitle || `${productName} - Must Have!`, 
+                        description: pinDesc || `Get ${productName} now! ${productLink} #Tech #Gadgets #Trending`, 
                         link: productLink,
                         media_source: { source_type: "image_url", url: productImage }
                     }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
                 } catch(pinErr) { console.error("Pinterest Error:", pinErr.response?.data); }
             }
 
-            // 6. Viral Twitter Post
+            // Twitter Post
             if(TWITTER_API_KEY) {
                 try {
                     const tweetText = `🚨 Honest Review Alert: ${productName}!\n\n✅ Premium Quality\n🚚 FREE Worldwide Shipping\n💰 Only $${productPrice}\n\nIs it worth the hype? Read our full review 👇\n${productLink}\n\n#TechGadgets #SmartShopping #HonestReview`;
@@ -186,8 +188,7 @@ async function runGodModePipeline() {
                 } catch(twitErr) { console.error("Twitter Error:", twitErr.message); }
             }
 
-            // 7. Telegram Channel Alert
-            await sendTelegramAlert(`🆕 <b>Full SEO Product Live!</b>\n📦 ${productName}\n💰 $${productPrice} (FREE Shipping)\n🔗 <a href="${productLink}">View Product</a>\n\n✅ High SEO Blog Posted with Image\n✅ Pinterest Pinned\n✅ Twitter Tweeted`);
+            await sendTelegramAlert(`🆕 <b>Full SEO Product Live!</b>\n📦 ${productName}\n💰 $${productPrice}\n🔗 <a href="${productLink}">View Product</a>\n\n✅ Blog Posted\n✅ Pinterest Pinned\n✅ Twitter Tweeted`);
 
             await new Promise(r => setTimeout(r, 10000)); 
         }
@@ -226,9 +227,56 @@ app.get('/test-pinterest', async (req, res) => {
     res.send("✅ Pinterest Token Loaded. Ready to pin trending content!");
 });
 
+// Manual Trigger for Daily Pipeline
 app.get('/run-pipeline', async (req, res) => {
     res.send("🚀 God Mode V8 Pipeline Triggered! Check Telegram for step-by-step updates.");
     runGodModePipeline();
+});
+
+// 🔥 INSTANT PINTEREST PINNER (All Products from Website)
+app.get('/pin-now', async (req, res) => {
+    if(!PINTEREST_TOKEN || !PINTEREST_BOARD_ID) {
+        return res.send("❌ Error: PINTEREST_TOKEN or PINTEREST_BOARD_ID is missing in Render Env!");
+    }
+    
+    try {
+        // Fetch ALL available products from Supabase
+        const { data: products, error } = await supabase.from('store_products').select('*').order('created_at', { ascending: false });
+        
+        if(error || !products || products.length === 0) {
+            return res.send("❌ No products found in Supabase! Add products first or run /run-pipeline.");
+        }
+
+        res.send(`⏳ Pinning ${products.length} products to Pinterest with Viral AI Titles... Please wait. Check your board in a minute!`);
+
+        for(const p of products) {
+            const productLink = `${WEBSITE_URL}/product/${p.id}`;
+            
+            // Generate Viral Clickbait Title and Description for Pinterest
+            const pinTitle = await askAI(`Write a highly catchy, clickbaity Pinterest pin title (max 100 characters) for: ${p.name}. It should make people want to click instantly. Output ONLY the title.`);
+            const pinDesc = await askAI(`Write a viral Pinterest description for ${p.name} (Price: $${p.price_usd}). Include a strong call to action to buy, 3 trending hashtags (#Tech #Gadgets #Trending), and this link: ${productLink}. Output ONLY the description.`);
+
+            try {
+                await axios.post(`https://api.pinterest.com/v5/pins`, {
+                    board_id: PINTEREST_BOARD_ID, 
+                    title: pinTitle || `${p.name} - Must Have Tech!`, 
+                    description: pinDesc || `🔥 Get ${p.name} for just $${p.price_usd}! FREE Worldwide Shipping. Shop Now: ${productLink} #TechGadgets #SmartShopping #TrendingDeals`, 
+                    link: productLink, // Direct link to your website product
+                    media_source: { source_type: "image_url", url: p.image }
+                }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
+                console.log(`✅ Pinned: ${p.name}`);
+            } catch(pinErr) { 
+                console.error(`❌ Pin Error for ${p.name}:`, pinErr.response?.data); 
+            }
+            // Rate limit delay
+            await new Promise(r => setTimeout(r, 3000)); 
+        }
+        
+        sendTelegramAlert(`✅ <b>Bulk Pinterest Pinning Done!</b>\n📌 ${products.length} products pinned with viral AI titles and website links.`);
+        
+    } catch(e) {
+        console.error("Bulk Pin Error:", e);
+    }
 });
 
 // E-Commerce & Voice Routes
