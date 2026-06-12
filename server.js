@@ -233,46 +233,45 @@ app.get('/run-pipeline', async (req, res) => {
     runGodModePipeline();
 });
 
-// 🔥 INSTANT PINTEREST PINNER (All Products from Website)
+// 🔥 POWERFUL INSTANT PINTEREST PINNER (WITH TELEGRAM LIVE DEBUGGING)
 app.get('/pin-now', async (req, res) => {
     if(!PINTEREST_TOKEN || !PINTEREST_BOARD_ID) {
         return res.send("❌ Error: PINTEREST_TOKEN or PINTEREST_BOARD_ID is missing in Render Env!");
     }
     
     try {
-        // Fetch ALL available products from Supabase
         const { data: products, error } = await supabase.from('store_products').select('*').order('created_at', { ascending: false });
         
         if(error || !products || products.length === 0) {
             return res.send("❌ No products found in Supabase! Add products first or run /run-pipeline.");
         }
 
-        res.send(`⏳ Pinning ${products.length} products to Pinterest with Viral AI Titles... Please wait. Check your board in a minute!`);
+        res.send(`⏳ Pinning ${products.length} products... I will send a Telegram message for EACH pin (Success or Error). Check Telegram NOW!`);
 
         for(const p of products) {
             const productLink = `${WEBSITE_URL}/product/${p.id}`;
             
-            // Generate Viral Clickbait Title and Description for Pinterest
-            const pinTitle = await askAI(`Write a highly catchy, clickbaity Pinterest pin title (max 100 characters) for: ${p.name}. It should make people want to click instantly. Output ONLY the title.`);
-            const pinDesc = await askAI(`Write a viral Pinterest description for ${p.name} (Price: $${p.price_usd}). Include a strong call to action to buy, 3 trending hashtags (#Tech #Gadgets #Trending), and this link: ${productLink}. Output ONLY the description.`);
+            const pinTitle = await askAI(`Write a catchy Pinterest title for: ${p.name}. Output ONLY the title.`);
+            const pinDesc = await askAI(`Write a Pinterest description for ${p.name} ($${p.price_usd}). Include link: ${productLink} and hashtags. Output ONLY description.`);
 
             try {
                 await axios.post(`https://api.pinterest.com/v5/pins`, {
                     board_id: PINTEREST_BOARD_ID, 
-                    title: pinTitle || `${p.name} - Must Have Tech!`, 
-                    description: pinDesc || `🔥 Get ${p.name} for just $${p.price_usd}! FREE Worldwide Shipping. Shop Now: ${productLink} #TechGadgets #SmartShopping #TrendingDeals`, 
-                    link: productLink, // Direct link to your website product
+                    title: pinTitle || `${p.name} - Must Have!`, 
+                    description: pinDesc || `Get ${p.name} now! ${productLink} #Tech`, 
+                    link: productLink,
                     media_source: { source_type: "image_url", url: p.image }
                 }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
+                
+                await sendTelegramAlert(`✅ <b>Pinterest Pin Created!</b>\n📦 ${p.name}`);
                 console.log(`✅ Pinned: ${p.name}`);
             } catch(pinErr) { 
-                console.error(`❌ Pin Error for ${p.name}:`, pinErr.response?.data); 
+                const errorDetails = pinErr.response?.data ? JSON.stringify(pinErr.response.data) : pinErr.message;
+                console.error(`❌ Pin Error for ${p.name}:`, errorDetails);
+                await sendTelegramAlert(`❌ <b>Pinterest Pin FAILED!</b>\n📦 Product: ${p.name}\n⚠️ Error: ${errorDetails}`);
             }
-            // Rate limit delay
             await new Promise(r => setTimeout(r, 3000)); 
         }
-        
-        sendTelegramAlert(`✅ <b>Bulk Pinterest Pinning Done!</b>\n📌 ${products.length} products pinned with viral AI titles and website links.`);
         
     } catch(e) {
         console.error("Bulk Pin Error:", e);
