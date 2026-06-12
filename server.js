@@ -6,12 +6,15 @@ const axios = require('axios');
 const cron = require('node-cron');
 const cors = require('cors');
 const { Resend } = require('resend');
+const { TwitterApi } = require('twitter-api-v2'); // New Twitter Package
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ENV Variables
+// ==========================================
+// 🛠️ ENV VARIABLES
+// ==========================================
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
 const GROQ_KEY = process.env.GROQ_KEY; 
@@ -23,31 +26,35 @@ const BLOGGER_REFRESH_TOKEN = process.env.BLOGGER_REFRESH_TOKEN;
 const BLOG_ID = process.env.BLOG_ID;
 const PINTEREST_TOKEN = process.env.PINTEREST_TOKEN;
 const PINTEREST_BOARD_ID = process.env.PINTEREST_BOARD_ID;
-const UNSPLASH_KEY = process.env.UNSPLASH_KEY;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'super_secret_admin_token_Mrhamdu123@';
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const TWITTER_API_KEY = process.env.TWITTER_API_KEY;
+const TWITTER_API_SECRET = process.env.TWITTER_API_SECRET;
+const TWITTER_ACCESS_TOKEN = process.env.TWITTER_ACCESS_TOKEN; // Needed for posting
+const TWITTER_ACCESS_SECRET = process.env.TWITTER_ACCESS_SECRET; // Needed for posting
 const INDEXNOW_KEY = process.env.INDEXNOW_KEY || 'pilotbotindexkey123';
 
 const supabase = createClient(SB_URL, SB_KEY);
 const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
-const resend = new Resend(RESEND_API_KEY);
-
+const resend = new Resend(process.env.RESEND_API_KEY);
 const WEBSITE_URL = "https://affiliatepilot-frontend.vercel.app";
 
+// Twitter Client Setup
+const twitterClient = new TwitterApi({
+  appKey: TWITTER_API_KEY,
+  appSecret: TWITTER_API_SECRET,
+  accessToken: TWITTER_ACCESS_TOKEN,
+  accessSecret: TWITTER_ACCESS_SECRET,
+});
+
 // ==========================================
-// CORE HELPER FUNCTIONS
+// 🧠 CORE HELPER FUNCTIONS
 // ==========================================
 async function askAI(prompt) {
     try {
         const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
             model: "llama-3.3-70b-versatile",
-            messages: [
-                { role: "system", content: "You are a world-class viral tech blog writer. Always output STRICT HTML." },
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
             temperature: 0.7,
         }, { headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } });
         return response.data.choices[0].message.content.replace(/```html/g, '').replace(/```/g, '').trim();
@@ -71,160 +78,128 @@ async function getBloggerToken() {
     return tokenRes.data.access_token;
 }
 
-async function getUnsplashImage(query) {
-    let imageUrl = 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800'; 
-    if(UNSPLASH_KEY) {
-        try {
-            const unsplashRes = await axios.get(`https://api.unsplash.com/photos/random?query=${query}&client_id=${UNSPLASH_KEY}`);
-            imageUrl = unsplashRes.data.urls.regular;
-        } catch(e) {}
-    }
-    return imageUrl;
-}
-
-// ==========================================
-// GOD MODE V7 NEW FUNCTIONS
-// ==========================================
-
-// 1. Google IndexNow Ping
 async function pingIndexNow(productUrl) {
     try {
         await axios.post('https://api.indexnow.org/IndexNow', {
-            host: "affiliatepilot-frontend.vercel.app",
-            key: INDEXNOW_KEY,
-            urlList: [productUrl]
+            host: "affiliatepilot-frontend.vercel.app", key: INDEXNOW_KEY, urlList: [productUrl]
         });
         console.log("✅ IndexNow Pinged for:", productUrl);
     } catch(e) { console.error("IndexNow Error:", e.message); }
 }
 
-// 2. Auto CJ Order Fulfillment
-async function autoFulfillCJOrder(orderData) {
-    if(!CJ_ACCESS_TOKEN) return console.log("CJ Token missing, skipping auto-fulfillment");
-    try {
-        const cjRes = await axios.post('https://developers.cjdropshipping.com/api/v1/orders', {
-            orderType: 1,
-            shippingMethod: "Standard Shipping",
-            orderItems: orderData.products.map(p => ({ vid: p.cj_variant_id, quantity: 1 })),
-            shippingAddress: {
-                country: orderData.buyer_address.country, province: orderData.buyer_address.state,
-                city: orderData.buyer_address.city, streetAddress: orderData.buyer_address.address,
-                zipCode: orderData.buyer_address.zip, consigneeName: orderData.buyer_address.fullName,
-                phone: orderData.buyer_address.phone
-            }
-        }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
+// ==========================================
+// 🚀 GOD MODE AUTOMATION PIPELINE
+// ==========================================
 
-        if(cjRes.data && cjRes.data.code === 200) {
-            await supabase.from('orders').update({ 
-                status: 'Processing in CJ', cj_order_id: cjRes.data.data.orderId 
-            }).eq('paypal_order_id', orderData.paypal_order_id);
-            sendTelegramAlert(`✅ <b>CJ Order Auto-Placed!</b>\n📦 CJ Order ID: ${cjRes.data.data.orderId}`);
-        } else {
-            sendTelegramAlert(`⚠️ <b>CJ Auto-Order Failed!</b>\nReason: ${cjRes.data.message}`);
+async function runGodModePipeline() {
+    sendTelegramAlert("🤖 <b>God Mode Activated!</b>\n🔍 Searching for winning products...");
+    
+    try {
+        // 1. Scrape Winning Products (Amazon Best Sellers Example)
+        const run = await apifyClient.actor("apify/amazon-best-sellers").call({ maxItems: 3 });
+        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+        
+        if(!items || items.length === 0) return sendTelegramAlert("⚠️ No products found today.");
+
+        for(const item of items) {
+            const productName = item.title;
+            const productImage = item.imageUrl || item.mainImage;
+            const productPrice = item.price || "29.99";
+            
+            // 2. Generate AI Description & Specs
+            const aiDesc = await askAI(`Write a short, viral 2-line e-commerce description for: ${productName}. Output plain text only.`);
+            
+            // 3. Save to Supabase
+            const { data: newProduct, error } = await supabase.from('store_products').insert({
+                name: productName, image: productImage, price_usd: productPrice,
+                description: aiDesc, specs: "Quality:Premium|Shipping:FREE", profit_margin: (productPrice * 0.4).toFixed(2), cj_base_cost: (productPrice * 0.5).toFixed(2), cj_shipping_cost: 0
+            }).select().single();
+
+            if(error || !newProduct) continue;
+            
+            const productLink = `${WEBSITE_URL}/product/${newProduct.id}`;
+            pingIndexNow(productLink); // Instant Google Indexing
+
+            // 4. Post to Blogger
+            if(BLOG_ID) {
+                const blogHTML = await askAI(`Write a viral, SEO-optimized 500-word tech blog post about: ${productName}. Include this affiliate link naturally: <a href="${productLink}">Buy Now</a>. Output STRICT HTML.`);
+                if(blogHTML) {
+                    const bToken = await getBloggerToken();
+                    await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
+                        kind: 'blogger#post', title: `${productName} - Best Deal & Review!`, content: blogHTML
+                    }, { headers: { Authorization: `Bearer ${bToken}` } });
+                }
+            }
+
+            // 5. Post to Pinterest
+            if(PINTEREST_TOKEN && PINTEREST_BOARD_ID) {
+                await axios.post(`https://api.pinterest.com/v5/pins`, {
+                    board_id: PINTEREST_BOARD_ID, title: productName, 
+                    description: `${productName} - Best Price!`, link: productLink,
+                    media_source: { source_type: "image_url", url: productImage }
+                }, { headers: { Authorization: `Bearer ${PINTEREST_TOKEN}`, 'Content-Type': 'application/json' } });
+            }
+
+            // 6. Post to Twitter
+            if(TWITTER_API_KEY) {
+                try {
+                    await twitterClient.v2.tweet(`🔥 Just found an insane deal! ${productName} for just $${productPrice}. Grab it before it's gone! 👇\n${productLink}`);
+                } catch(twitErr) { console.error("Twitter Error:", twitErr.message); }
+            }
+
+            // 7. Telegram Channel Alert
+            await sendTelegramAlert(`🆕 <b>New Winning Product Added!</b>\n📦 ${productName}\n💰 $${productPrice} (FREE Shipping)\n🔗 <a href="${productLink}">View Product</a>`);
+
+            // Delay to avoid API rate limits
+            await new Promise(r => setTimeout(r, 5000)); 
         }
     } catch(e) {
-        console.error("CJ Fulfillment Error:", e.response?.data || e.message);
-        sendTelegramAlert(`🚨 <b>CJ API ERROR!</b>\nOrder placement failed.`);
+        console.error("Pipeline Error:", e);
+        sendTelegramAlert(`🚨 <b>Pipeline Crashed!</b>\nError: ${e.message}`);
     }
 }
 
 // ==========================================
-// API ROUTES
+// 🌐 TEST & API ROUTES
 // ==========================================
 
 app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V7 is AWAKE!'));
 
-// TEST TELEGRAM ROUTE
 app.get('/test-telegram', async (req, res) => {
-    await sendTelegramAlert("🚀 Test Message from PilotBot! God Mode V7 is active.");
-    res.send("Check your Telegram now!");
-});
-
-// SAVE ORDER & AUTO FULFILL
-app.post('/api/save-order', async (req, res) => {
-    const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
-    if(!paypal_order_id || !products) return res.json({ success: false });
-    
-    const expected = new Date(); expected.setDate(expected.getDate() + 12);
-    const { data: orderData, error } = await supabase.from('orders').insert({
-        paypal_order_id, product_name: products.map(p=>p.name).join(', '), product_image: products[0].image, price_usd: total_price, 
-        buyer_email, buyer_address, expected_delivery: expected.toISOString().split('T')[0], status: 'Pending CJ Order',
-        traffic_source: traffic_source || 'Direct',
-        cj_base_cost: products.reduce((s,p)=>s+parseFloat(p.cj_base_cost||0),0),
-        cj_shipping_cost: products.reduce((s,p)=>s+parseFloat(p.cj_shipping_cost||0),0), profit_margin: total_profit
-    }).select().single();
-
-    if(error) return res.json({ success: false, error });
-    
-    sendTelegramAlert(`🚨 <b>New Order!</b>\n💰 Price: $${total_price}\n📈 Profit: $${total_profit}\n📦 Product: ${products.map(p=>p.name).join(', ')}`);
-    autoFulfillCJOrder({ paypal_order_id, products, buyer_email, buyer_address });
-
-    res.json({ success: true, order: orderData });
-});
-
-// ADMIN STATS
-app.get('/api/admin/stats', async (req, res) => {
-    const auth = req.headers.authorization;
-    if(auth !== `Bearer super_secret_admin_token_Mrhamdu123@`) return res.status(401).json({ error: "Unauthorized" });
+    if(!TELEGRAM_BOT_TOKEN) return res.send("❌ TELEGRAM_BOT_TOKEN missing");
     try {
-        const { data: orders } = await supabase.from('orders').select('*');
-        const { data: products } = await supabase.from('store_products').select('*');
-        const safeOrders = orders || []; const safeProducts = products || [];
-        let totalRevenue = 0, totalCJCost = 0, totalShippingCost = 0, totalProfit = 0;
-        const trafficSources = {}; const statusCounts = {};
-        safeOrders.forEach(o => {
-            totalRevenue += parseFloat(o.price_usd || 0);
-            totalCJCost += parseFloat(o.cj_base_cost || 0);
-            totalShippingCost += parseFloat(o.cj_shipping_cost || 0);
-            totalProfit += parseFloat(o.profit_margin || 0);
-            trafficSources[o.traffic_source || 'Direct'] = (trafficSources[o.traffic_source || 'Direct'] || 0) + 1;
-            statusCounts[o.status || 'Unknown'] = (statusCounts[o.status || 'Unknown'] || 0) + 1;
-        });
-        res.json({ success: true, totalRevenue, totalCJCost, totalShippingCost, totalProfit, totalOrders: safeOrders.length, totalProducts: safeProducts.length, trafficSources, statusCounts });
-    } catch(e) { res.json({ success: false, error: e.message }); }
+        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { chat_id: TELEGRAM_CHAT_ID, text: "🚀 PilotBot Test: Telegram is working!" });
+        res.send("✅ Telegram Message Sent!");
+    } catch(e) { res.send(`❌ Error: ${e.response?.data?.description}`); }
 });
 
-// INDEXNOW PING ROUTE
-app.post('/api/notify-product-added', async (req, res) => {
-    const { productId } = req.body;
-    if(productId) {
-        pingIndexNow(`${WEBSITE_URL}/product/${productId}`);
-        res.json({ success: true, message: "Google Notified via IndexNow!" });
-    } else { res.json({ success: false }); }
-});
-
-// ABANDONED CART EMAIL
-app.post('/api/abandoned-cart', async (req, res) => {
-    const { email, productName, productImage } = req.body;
-    if(!email || !RESEND_API_KEY) return res.json({ success: false });
+app.get('/test-twitter', async (req, res) => {
+    if(!TWITTER_API_KEY) return res.send("❌ TWITTER_API_KEY missing");
     try {
-        await resend.emails.send({
-            from: 'AffiliatePilot <noreply@yourdomain.com>',
-            to: email,
-            subject: `🔥 You forgot something! Special discount inside.`,
-            html: `<div style="font-family:Arial; text-align:center;">
-                     <h2>Wait! Don't miss out on ${productName}</h2>
-                     <img src="${productImage}" style="max-width:200px; border-radius:10px;" />
-                     <p>Use code <b>COMEBACK10</b> at checkout for 10% OFF!</p>
-                     <a href="${WEBSITE_URL}/store" style="background:#f59e0b; color:#000; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold;">Complete My Order</a>
-                   </div>`
-        });
-        res.json({ success: true });
-    } catch(e) { console.error("Resend Error:", e.message); res.json({ success: false }); }
+        await twitterClient.v2.tweet("🤖 PilotBot Test: Twitter integration is working perfectly! #Tech");
+        res.send("✅ Tweet Posted Successfully!");
+    } catch(e) { res.send(`❌ Error: ${e.message}`); }
 });
 
-// ELEVENLABS VOICEOVER GENERATOR
-app.post('/api/generate-voiceover', async (req, res) => {
-    const { text } = req.body;
-    if(!ELEVENLABS_API_KEY) return res.status(400).json({ error: "ElevenLabs API Key missing" });
-    try {
-        const voiceRes = await axios.post(`https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM`, {
-            text: text, model_id: "eleven_multilingual_v2",
-            voice_settings: { stability: 0.5, similarity_boost: 0.75 }
-        }, { headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' }, responseType: 'arraybuffer' });
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.send(voiceRes.data);
-    } catch(e) { console.error("ElevenLabs Error:", e.message); res.status(500).json({ error: "Voice generation failed" }); }
+app.get('/test-pinterest', async (req, res) => {
+    if(!PINTEREST_TOKEN) return res.send("❌ PINTEREST_TOKEN missing");
+    res.send("✅ Pinterest Token Loaded. Will pin during daily automation.");
+});
+
+// Manual Trigger for Pipeline Testing
+app.get('/run-pipeline', async (req, res) => {
+    res.send("🚀 God Mode Pipeline Triggered! Check Telegram for updates.");
+    runGodModePipeline();
+});
+
+// ==========================================
+// ⏰ CRON JOB (Daily 9:30 AM IST)
+// ==========================================
+// Cron format: Minute Hour Day Month DayOfWeek
+// 30 4 = 4:30 AM UTC = 10:00 AM IST (Adjust as needed)
+cron.schedule('30 4 * * *', () => {
+    console.log("⏰ Running Daily God Mode Pipeline...");
+    runGodModePipeline();
 });
 
 const PORT = process.env.PORT || 3000;
