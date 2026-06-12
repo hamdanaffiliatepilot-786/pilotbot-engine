@@ -57,7 +57,7 @@ async function askAI(prompt) {
         const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
             model: "llama-3.3-70b-versatile",
             messages: [{ role: "user", content: prompt }],
-            temperature: 0.8, // Slightly creative for viral content
+            temperature: 0.8,
         }, { headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } });
         return response.data.choices[0].message.content.replace(/```html/g, '').replace(/```/g, '').trim();
     } catch(e) { console.error("AI Error:", e.message); return null; }
@@ -112,7 +112,7 @@ async function runGodModePipeline() {
     sendTelegramAlert("🤖 <b>God Mode V8 Activated!</b>\n🔍 Hunting for winning viral products...");
     
     try {
-        // 1. Scrape Winning Products (Using Amazon Best Sellers as example)
+        // 1. Scrape Winning Products
         const run = await apifyClient.actor("apify/amazon-best-sellers").call({ maxItems: 2 });
         const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
         
@@ -144,9 +144,9 @@ async function runGodModePipeline() {
                 Include the following strictly:
                 - An H1 title containing keywords like "Best ${productName} Review 2024".
                 - A meta description paragraph at the top summarizing the product and price ($${productPrice}).
-                - H2 subheadings like "Why ${productName} is a Game Changer" and "Key Features & Benefits".
+                - H2 subheadings like "Why ${productName} is a Game Changer" and "Key Features and Benefits".
                 - A bulleted list of pros.
-                - A strong Call to Action link in bold: <a href="${productLink}">🔥 Grab ${productName} with FREE Shipping Now!</a>
+                - A strong Call to Action link in bold: <a href="${productLink}">Grab ${productName} with FREE Shipping Now!</a>
                 - Make it at least 500 words. Output STRICT HTML only.`;
 
                 const blogHTML = await askAI(blogPrompt);
@@ -177,7 +177,7 @@ async function runGodModePipeline() {
             // 6. Viral Twitter Post
             if(TWITTER_API_KEY) {
                 try {
-                    const tweetText = `🚨 Just found the ultimate hack: ${productName}!\n\n✅ Premium Quality\n🚚 FREE Worldwide Shipping\n💰 Only $${productPrice}\n\nGrab yours before it sells out 👇\n${productLink}\n\n#TechGadgets #SmartShopping #Deals`;
+                    const tweetText = `Just found the ultimate hack: ${productName}!\n\nPremium Quality\nFREE Worldwide Shipping\nOnly $${productPrice}\n\nGrab yours before it sells out\n${productLink}\n\n#TechGadgets #SmartShopping #Deals`;
                     await twitterClient.v2.tweet(tweetText);
                 } catch(twitErr) { console.error("Twitter Error:", twitErr.message); }
             }
@@ -213,7 +213,9 @@ app.get('/test-twitter', async (req, res) => {
     try {
         await twitterClient.v2.tweet("🤖 PilotBot V8 Test: Twitter integration is working! #SEO #Traffic");
         res.send("✅ Tweet Posted Successfully!");
-    } catch(e) { res.send(`❌ Error: ${e.message}. <b>Fix:</b> Set App Permissions to 'Read and Write' in Twitter Dev Portal & Regenerate Access Tokens."); }
+    } catch(e) { 
+        res.send(`❌ Error: ${e.message}. Fix: Set App Permissions to Read and Write in Twitter Dev Portal and Regenerate Access Tokens.`); 
+    }
 });
 
 app.get('/test-pinterest', async (req, res) => {
@@ -252,7 +254,7 @@ app.post('/api/abandoned-cart', async (req, res) => {
         await resend.emails.send({
             from: 'AffiliatePilot <noreply@yourdomain.com>', to: email,
             subject: `🔥 You forgot something! Special discount inside.`,
-            html: `<div style="font-family:Arial; text-align:center;"><h2>Wait! Don't miss out on ${productName}</h2><img src="${productImage}" style="max-width:200px; border-radius:10px;" /><p>Use code <b>COMEBACK10</b> for 10% OFF!</p><a href="${WEBSITE_URL}/store" style="background:#f59e0b; color:#000; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold;">Complete My Order</a></div>`
+            html: `<div style="font-family:Arial; text-align:center;"><h2>Wait! Dont miss out on ${productName}</h2><img src="${productImage}" style="max-width:200px; border-radius:10px;" /><p>Use code <b>COMEBACK10</b> for 10% OFF!</p><a href="${WEBSITE_URL}/store" style="background:#f59e0b; color:#000; padding:10px 20px; border-radius:8px; text-decoration:none; font-weight:bold;">Complete My Order</a></div>`
         });
         res.json({ success: true });
     } catch(e) { res.json({ success: false }); }
@@ -264,14 +266,14 @@ app.post('/api/notify-product-added', async (req, res) => {
     else { res.json({ success: false }); }
 });
 
-// 🎬 NEW FEATURE: Viral Video Script Generator (For TikTok/Reels)
+// Viral Video Script Generator
 app.post('/api/generate-video-script', async (req, res) => {
     const { productName, productDescription } = req.body;
     const script = await askAI(`Create a highly viral 30-second TikTok/Reels script for the product: ${productName}. Description: ${productDescription}. Format: [Visual] and [Audio] cues. Make the hook mind-blowing in the first 3 seconds.`);
     res.json({ success: true, script });
 });
 
-// 🎙️ ElevenLabs Voiceover
+// ElevenLabs Voiceover
 app.post('/api/generate-voiceover', async (req, res) => {
     const { text } = req.body;
     if(!ELEVENLABS_API_KEY) return res.status(400).json({ error: "ElevenLabs API Key missing" });
