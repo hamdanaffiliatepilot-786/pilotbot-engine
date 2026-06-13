@@ -87,108 +87,140 @@ async function pingIndexNow(productUrl) {
 }
 
 // ==========================================
-// 🚀 GOD MODE V9 AUTOMATION PIPELINE
+// 🚀 GOD MODE V10 AUTOMATION PIPELINE
 // ==========================================
 async function runGodModePipeline() {
-    await sendTelegram("🤖 <b>God Mode V9 Activated!</b>\n🔍 Fetching winning products from CJ/Zendrop...");
-    let report = "📊 <b>Daily Automation Report:</b>\n\n";
-    let productsAdded = 0;
+    await sendTelegram("🤖 <b>God Mode V10 Activated!</b>\n🔍 Fetching winning products from CJ/Zendrop...");
+    let report = "📊 <b>Daily V10 Report:</b>\n\n";
+    let addedProducts = [];
 
     try {
-        // 1. FETCH PRODUCTS FROM CJ DROPSHIPPING
+        // 1. FETCH PRODUCTS FROM CJ DROPSHIPPING (FIXED API)
         let items = [];
         if(CJ_ACCESS_TOKEN) {
             try {
-                const cjRes = await axios.get('https://developers.cjdropshipping.com/api/v1/products/list', {
-                    params: { pageNum: 1, pageSize: 2 }, 
-                    headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN }
+                const cjRes = await axios.post('https://developers.cjdropshipping.com/api/v1.0/product/list', {
+                    pageNum: 1, pageSize: 3
+                }, { 
+                    headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN, 'Content-Type': 'application/json' } 
                 });
-                if(cjRes.data?.data?.list) items = cjRes.data.data.list.map(p => ({
-                    name: p.productNameEn, image: p.img, price: p.sellPrice, variant_id: p.vid, source: 'CJ'
-                }));
-            } catch(e) { report += "❌ CJ API Failed\n"; }
+                
+                if(cjRes.data?.data?.list) {
+                    items = cjRes.data.data.list.map(p => ({
+                        name: p.productNameEn, 
+                        image: p.productImage?.[0] || '', 
+                        price: p.productVariants?.[0]?.sellPrice || "29.99", 
+                        variant_id: p.productVariants?.[0]?.vid || '', 
+                        source: 'CJ'
+                    })).filter(p => p.variant_id); // Only products with variant ID
+                }
+            } catch(e) { 
+                console.error("CJ Error:", e.response?.data || e.message);
+                report += "❌ CJ API Failed\n"; 
+            }
         }
 
-        // 2. FETCH FROM ZENDROP IF CJ FAILS
+        // 2. FETCH FROM ZENDROP IF CJ EMPTY
         if(items.length === 0 && ZENDROP_API_KEY) {
             try {
-                const zenRes = await axios.get('https://api.zendrop.com/v1/products', { headers: { 'Authorization': `Bearer ${ZENDROP_API_KEY}` } });
+                const zenRes = await axios.get('https://api.zendrop.com/v1/products/list', { 
+                    params: { limit: 3 },
+                    headers: { 'Authorization': `Bearer ${ZENDROP_API_KEY}` } 
+                });
                 if(zenRes.data?.products) items = zenRes.data.products.map(p => ({
-                    name: p.title, image: p.image, price: p.variants[0]?.retail_price || "29.99", variant_id: p.variants[0]?.id, source: 'Zendrop'
+                    name: p.title, image: p.images?.[0] || '', price: p.variants?.[0]?.retail_price || "29.99", variant_id: p.variants?.[0]?.id, source: 'Zendrop'
                 }));
             } catch(e) { report += "❌ Zendrop API Failed\n"; }
         }
 
         if(items.length === 0) {
-            await sendTelegram("⚠️ No products found from CJ/Zendrop. Check API keys in Render .env!");
+            await sendTelegram("⚠️ No products found! Check Render .env keys or CJ/Zendrop accounts.");
             return;
         }
 
         for(const item of items) {
             const productPrice = parseFloat(item.price || 29.99).toFixed(2);
-            const seoDesc = await askAI(`Write a high-converting 3-line e-commerce description for: ${item.name}. Focus on urgency and free shipping.`);
+            
+            // AI SEO TITLE & MARKET PRICE FOR DISCOUNT
+            const seoTitle = await askAI(`Rewrite this product name into a highly SEO optimized, clickbaity e-commerce title under 60 characters: ${item.name}. Output ONLY the title.`);
+            const marketPrice = (productPrice * 1.8).toFixed(2); // Fake MRP (80% higher for 50% off illusion)
+            
+            const seoDesc = await askAI(`Write a high-converting 3-line e-commerce description for: ${item.name}. Focus on urgency, problem-solving, and free shipping.`);
             const specs = await askAI(`Create 4 specs for ${item.name} in format Spec:Value separated by |.`);
             
             const { data: newProduct, error } = await supabase.from('store_products').insert({
-                name: item.name, image: item.image, price_usd: productPrice, description: seoDesc, specs: specs,
+                name: seoTitle || item.name, image: item.image, price_usd: productPrice, 
+                compare_at_price: marketPrice, // Added MRP for frontend discount tag
+                description: seoDesc, specs: specs,
                 profit_margin: (productPrice * 0.4).toFixed(2), cj_base_cost: (productPrice * 0.5).toFixed(2),
                 cj_variant_id: item.source === 'CJ' ? item.variant_id : null,
                 zendrop_variant_id: item.source === 'Zendrop' ? item.variant_id : null
             }).select().single();
 
             if(error || !newProduct) { console.error("Supabase Error:", error); continue; }
-            productsAdded++;
             
+            addedProducts.push(newProduct);
             const productLink = `${WEBSITE_URL}/product/${newProduct.id}`;
             pingIndexNow(productLink);
             submitToGoogleIndex(productLink); 
 
             // PUBLIC CHANNEL DEAL
-            await sendTelegram(`🆕 <b>New Winning Product Live!</b>\n📦 ${item.name}\n💰 $${productPrice} (FREE Shipping)\n🔗 <a href="${productLink}">Shop Now!</a>`, true);
+            await sendTelegram(`🆕 <b>New Winning Product Live!</b>\n📦 ${newProduct.name}\n💰 $${productPrice} (FREE Shipping)\n🔗 <a href="${productLink}">Shop Now!</a>`, true);
 
-            // 📈 NUCLEAR SEO BLOG PIPELINE FOR BLOGGER.COM
+            // SINGLE PRODUCT BLOG
             if(BLOG_ID) {
-                const blogPrompt = `You are an elite SEO content writer for 'Affiliate Pilot'. Write a highly engaging, SEO-optimized blog post about: "${item.name}" (Price: $${productPrice}).
+                const blogPrompt = `You are an elite SEO content writer for 'Affiliate Pilot'. Write a highly engaging, SEO-optimized blog post about: "${newProduct.name}" (Price: $${productPrice}).
 
 STRICT HTML STRUCTURE RULES (Output ONLY valid HTML, no markdown, no \`\`\`):
-1. <h1>${item.name} Review: Is It Worth Buying in 2024?</h1>
-2. <p><i>Looking for the best deal on ${item.name}? Read our honest review and get FREE Worldwide Shipping today!</i></p>
-3. <img src="${item.image}" alt="${item.name} Honest Review" style="width:100%;max-width:600px;border-radius:8px;margin:15px 0;">
-4. <h2>What is ${item.name}?</h2><p>Write 100 words explaining the product and the problem it solves.</p>
-5. <h2>Key Features & Benefits</h2><ul><li>Feature 1: Benefit</li><li>Feature 2: Benefit</li><li>Feature 3: Benefit</li></ul>
-6. <h2>Pros and Cons</h2><h3>Pros</h3><ul><li>Pro 1</li><li>Pro 2</li></ul><h3>Cons</h3><ul><li>Con 1</li></ul>
+1. <h1>${newProduct.name} Review: Is It Worth Buying in 2024?</h1>
+2. <p><i>Looking for the best deal on ${newProduct.name}? Read our honest review and get FREE Worldwide Shipping today!</i></p>
+3. <img src="${item.image}" alt="${newProduct.name} Honest Review" style="width:100%;max-width:600px;border-radius:8px;margin:15px 0;">
+4. <h2>What is ${newProduct.name}?</h2><p>Write 100 words explaining the product and the problem it solves.</p>
+5. <h2>Key Features & Benefits</h2><ul><li>Feature 1: Benefit</li><li>Feature 2: Benefit</li></ul>
+6. <h2>Pros and Cons</h2><h3>Pros</h3><ul><li>Pro 1</li></ul><h3>Cons</h3><ul><li>Con 1</li></ul>
 7. <h2>Why Buy from Affiliate Pilot?</h2><p>Highlight FREE Worldwide Shipping, Buyer Protection, and Fast Delivery.</p>
-8. <h2>Final Verdict</h2><p>Give a strong 2-sentence conclusion.</p>
-9. <div style="text-align:center; margin:30px 0; padding:20px; background:#fff3cd; border-radius:12px; border:2px solid #ffc107;"><h3>🔥 Grab Yours Today!</h3><p>Don't miss out on this deal. Click below to buy with FREE Shipping!</p><a href="${productLink}" style="background-color:#f59e0b; color:#000; padding:15px 30px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:18px; display:inline-block;">Buy ${item.name} Now →</a></div>
+8. <div style="text-align:center; margin:30px 0; padding:20px; background:#fff3cd; border-radius:12px; border:2px solid #ffc107;"><h3>🔥 Grab Yours Today!</h3><a href="${productLink}" style="background-color:#f59e0b; color:#000; padding:15px 30px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:18px; display:inline-block;">Buy Now with FREE Shipping →</a></div>
 
-RULES: Use unique wording. No fluff. Must sound like a real human review. Make it 500 words long.`;
+RULES: Use unique wording. No fluff. Must sound like a real human review. 400 words long.`;
 
                 const blogHTML = await askAI(blogPrompt);
                 if(blogHTML) {
                     const bToken = await getBloggerToken();
                     await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
-                        kind: 'blogger#post', 
-                        title: `${item.name} Review: Is It Worth Buying? Pros & Cons`, 
-                        content: blogHTML,
-                        labels: ["Review", "Best Deals", "Tech Gadgets", item.name.split(' ')[0]] // SEO TAGS
+                        kind: 'blogger#post', title: `${newProduct.name} Review: Pros & Cons`, content: blogHTML, labels: ["Review", "Best Deals", "Tech Gadgets"]
                     }, { headers: { Authorization: `Bearer ${bToken}` } });
-                    
-                    report += "✅ SEO Blog Posted\n";
+                    report += "✅ Product Blog Posted\n";
                 }
             }
 
             // TWITTER
             if(twitterClient) {
                 try {
-                    await twitterClient.v2.tweet(`🚨 Honest Review: ${item.name}!\n🚚 FREE Worldwide Shipping\n💰 Only $${productPrice}\n\nRead more 👇\n${productLink}\n\n#TechGadgets #SmartShopping`);
+                    await twitterClient.v2.tweet(`🚨 Honest Review: ${newProduct.name}!\n🚚 FREE Worldwide Shipping\n💰 Only $${productPrice}\n\nRead more 👇\n${productLink}\n\n#TechGadgets #SmartShopping`);
                     report += "✅ Tweet Posted\n";
                 } catch(e) { report += "❌ Tweet Failed\n"; }
             }
             
-            await new Promise(r => setTimeout(r, 15000)); // 15 sec delay to avoid API rate limits
+            await new Promise(r => setTimeout(r, 15000)); 
         }
         
-        report += `\n📦 Total Products Added: ${productsAdded}`;
+        // 🚀 NEW FEATURE: DAILY "TOP PRODUCTS" LISTICLE BLOG (SEO GOLDMINE)
+        if(BLOG_ID && addedProducts.length > 0) {
+            await sendTelegram("📝 Generating SEO Nuclear Listicle Blog...");
+            let listHTML = `<h1>Top ${addedProducts.length} Trending Tech Gadgets You Must Buy in 2024</h1><p>If you are looking for the best tech gadgets with <b>FREE Worldwide Shipping</b>, you are in the right place! Our AI has handpicked these winning products for you today.</p>`;
+            
+            addedProducts.forEach((p, i) => {
+                listHTML += `<h2>${i+1}. ${p.name}</h2><img src="${p.image}" alt="${p.name}" style="width:100%;max-width:400px;border-radius:8px;margin:10px 0;"><p><b>Price:</b> $${p.price_usd} (Huge Discount!). ${p.description}</p><div style="text-align:center;margin:20px 0;"><a href="${WEBSITE_URL}/product/${p.id}" style="background:#f59e0b;color:#000;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Buy ${p.name} Now →</a></div><hr>`;
+            });
+
+            const bToken = await getBloggerToken();
+            await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
+                kind: 'blogger#post', title: `Top ${addedProducts.length} Trending Tech Gadgets in 2024 (Best Deals)`, content: listHTML, labels: ["Top 5", "Listicle", "Gadgets", "Best Deals"]
+            }, { headers: { Authorization: `Bearer ${bToken}` } });
+            report += "✅ LISTICLE Blog Posted (SEO Power!)\n";
+        }
+
+        report += `\n📦 Total Products Added: ${addedProducts.length}`;
         await sendTelegram(report); 
 
     } catch(e) {
@@ -199,11 +231,10 @@ RULES: Use unique wording. No fluff. Must sound like a real human review. Make i
 // ==========================================
 // 🌐 API ROUTES
 // ==========================================
-app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V9 is AWAKE!'));
+app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V10 is AWAKE!'));
 
-// TEST ROUTE (Jo pehle missing tha)
 app.get('/run-pipeline', async (req, res) => {
-    res.send("🚀 God Mode V9 Pipeline Triggered! Check Telegram for real-time updates.");
+    res.send("🚀 God Mode V10 Pipeline Triggered! Check Telegram for updates.");
     runGodModePipeline();
 });
 
@@ -249,15 +280,14 @@ app.post('/api/save-order', async (req, res) => {
     
     await sendTelegram(`🚨 <b>NEW SALE! 💸</b>\n💰 Price: $${total_price}\n📈 Profit: $${total_profit}`);
     
-    // AUTO FULFILL CJ / ZENDROP
     for(const p of products) {
         if(p.cj_variant_id && CJ_ACCESS_TOKEN) {
             try {
-                await axios.post('https://developers.cjdropshipping.com/api/v1/orders', {
+                await axios.post('https://developers.cjdropshipping.com/api/v1.0/order/createOrder', {
                     orderType: 1, shippingMethod: "Standard Shipping",
                     orderItems: [{ vid: p.cj_variant_id, quantity: 1 }],
                     shippingAddress: { country: buyer_address.country, province: buyer_address.state, city: buyer_address.city, streetAddress: buyer_address.address, zipCode: buyer_address.zip, consigneeName: buyer_address.fullName, phone: buyer_address.phone }
-                }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
+                }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN, 'Content-Type': 'application/json' } });
                 await supabase.from('orders').update({ status: 'Processing in CJ' }).eq('id', orderData.id);
                 await sendTelegram(`✅ <b>CJ Auto-Fulfilled!</b>`);
             } catch(e) { await sendTelegram(`❌ CJ Fulfillment Failed`); }
@@ -289,9 +319,9 @@ app.post('/api/get-coupon', async (req, res) => {
 // ⏰ DAILY CRON JOB (10:30 AM IST = 05:00 AM UTC)
 // ==========================================
 cron.schedule('0 5 * * *', () => {
-    console.log("⏰ Running Daily God Mode V9 Pipeline...");
+    console.log("⏰ Running Daily God Mode V10 Pipeline...");
     runGodModePipeline();
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🤖 PilotBot V9 AWAKE on port ${PORT}!`));
+app.listen(PORT, () => console.log(`🤖 PilotBot V10 AWAKE on port ${PORT}!`));
