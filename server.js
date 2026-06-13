@@ -42,7 +42,11 @@ const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n')
 
 const supabase = createClient(SB_URL, SB_KEY);
 const resend = new Resend(RESEND_API_KEY);
-const twitterClient = new TwitterApi({ appKey: TWITTER_API_KEY, appSecret: TWITTER_API_SECRET, accessToken: TWITTER_ACCESS_TOKEN, accessSecret: TWITTER_ACCESS_SECRET });
+let twitterClient;
+
+if(TWITTER_API_KEY && TWITTER_API_SECRET && TWITTER_ACCESS_TOKEN && TWITTER_ACCESS_SECRET) {
+    twitterClient = new TwitterApi({ appKey: TWITTER_API_KEY, appSecret: TWITTER_API_SECRET, accessToken: TWITTER_ACCESS_TOKEN, accessSecret: TWITTER_ACCESS_SECRET });
+}
 
 // ==========================================
 // 🧠 CORE HELPER FUNCTIONS
@@ -74,6 +78,7 @@ async function submitToGoogleIndex(url) {
         const auth = new google.auth.JWT(GOOGLE_CLIENT_EMAIL, null, GOOGLE_PRIVATE_KEY, ['https://www.googleapis.com/auth/indexing']);
         const indexing = google.indexing({ version: 'v3', auth });
         await indexing.urlNotifications.publish({ requestBody: { type: 'URL_UPDATED', url: url } });
+        console.log("Google Index Submitted:", url);
     } catch(e) { console.error("Google Index Error:", e.message); }
 }
 
@@ -86,11 +91,11 @@ async function pingIndexNow(productUrl) {
 // ==========================================
 async function runGodModePipeline() {
     await sendTelegram("🤖 <b>God Mode V9 Activated!</b>\n🔍 Fetching winning products from CJ/Zendrop...");
-    let report = "📊 <b>Daily Report:</b>\n\n";
+    let report = "📊 <b>Daily Automation Report:</b>\n\n";
     let productsAdded = 0;
 
     try {
-        // 1. FETCH PRODUCTS FROM CJ DROPSHIPPING (Apify Hata Diya Gaya Hai)
+        // 1. FETCH PRODUCTS FROM CJ DROPSHIPPING
         let items = [];
         if(CJ_ACCESS_TOKEN) {
             try {
@@ -173,13 +178,14 @@ RULES: Use unique wording. No fluff. Must sound like a real human review. Make i
             }
 
             // TWITTER
-            if(TWITTER_API_KEY) {
+            if(twitterClient) {
                 try {
                     await twitterClient.v2.tweet(`🚨 Honest Review: ${item.name}!\n🚚 FREE Worldwide Shipping\n💰 Only $${productPrice}\n\nRead more 👇\n${productLink}\n\n#TechGadgets #SmartShopping`);
                     report += "✅ Tweet Posted\n";
                 } catch(e) { report += "❌ Tweet Failed\n"; }
             }
-            await new Promise(r => setTimeout(r, 15000)); 
+            
+            await new Promise(r => setTimeout(r, 15000)); // 15 sec delay to avoid API rate limits
         }
         
         report += `\n📦 Total Products Added: ${productsAdded}`;
@@ -194,6 +200,12 @@ RULES: Use unique wording. No fluff. Must sound like a real human review. Make i
 // 🌐 API ROUTES
 // ==========================================
 app.get('/', (req, res) => res.send('🤖 PilotBot God Mode V9 is AWAKE!'));
+
+// TEST ROUTE (Jo pehle missing tha)
+app.get('/run-pipeline', async (req, res) => {
+    res.send("🚀 God Mode V9 Pipeline Triggered! Check Telegram for real-time updates.");
+    runGodModePipeline();
+});
 
 app.post('/api/admin-login', (req, res) => {
     if(req.body.password === ADMIN_PASSWORD) res.json({ success: true, token: ADMIN_PASSWORD });
@@ -237,6 +249,7 @@ app.post('/api/save-order', async (req, res) => {
     
     await sendTelegram(`🚨 <b>NEW SALE! 💸</b>\n💰 Price: $${total_price}\n📈 Profit: $${total_profit}`);
     
+    // AUTO FULFILL CJ / ZENDROP
     for(const p of products) {
         if(p.cj_variant_id && CJ_ACCESS_TOKEN) {
             try {
@@ -272,8 +285,13 @@ app.post('/api/get-coupon', async (req, res) => {
     res.json({ success: true, coupons: JSON.parse(result || '[]') });
 });
 
-// DAILY CRON JOB (10:30 AM IST = 05:00 AM UTC)
-cron.schedule('0 5 * * *', () => runGodModePipeline());
+// ==========================================
+// ⏰ DAILY CRON JOB (10:30 AM IST = 05:00 AM UTC)
+// ==========================================
+cron.schedule('0 5 * * *', () => {
+    console.log("⏰ Running Daily God Mode V9 Pipeline...");
+    runGodModePipeline();
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🤖 PilotBot V9 AWAKE on port ${PORT}!`));
