@@ -95,11 +95,11 @@ async function runGodModePipeline() {
     let addedProducts = [];
 
     try {
-        // 1. FETCH PRODUCTS FROM CJ DROPSHIPPING (FIXED API)
+        // 1. FETCH PRODUCTS FROM CJ DROPSHIPPING
         let items = [];
         if(CJ_ACCESS_TOKEN) {
             try {
-                const cjRes = await axios.post('https://developers.cjdropshipping.com/api/v1.0/product/list', {
+                const cjRes = await axios.post('https://developers.cjdropshipping.com/api/v1.1/product/listProducts', {
                     pageNum: 1, pageSize: 3
                 }, { 
                     headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN, 'Content-Type': 'application/json' } 
@@ -112,10 +112,13 @@ async function runGodModePipeline() {
                         price: p.productVariants?.[0]?.sellPrice || "29.99", 
                         variant_id: p.productVariants?.[0]?.vid || '', 
                         source: 'CJ'
-                    })).filter(p => p.variant_id); // Only products with variant ID
+                    })).filter(p => p.variant_id);
+                } else {
+                    await sendTelegram(`⚠️ <b>CJ Data Empty:</b> ${JSON.stringify(cjRes.data?.message || cjRes.data?.msg || "No list found")}`);
                 }
             } catch(e) { 
-                console.error("CJ Error:", e.response?.data || e.message);
+                const errorMsg = e.response?.data?.message || e.response?.data?.msg || e.message;
+                await sendTelegram(`❌ <b>CJ API Error:</b> ${errorMsg}`);
                 report += "❌ CJ API Failed\n"; 
             }
         }
@@ -123,18 +126,26 @@ async function runGodModePipeline() {
         // 2. FETCH FROM ZENDROP IF CJ EMPTY
         if(items.length === 0 && ZENDROP_API_KEY) {
             try {
-                const zenRes = await axios.get('https://api.zendrop.com/v1/products/list', { 
+                const zenRes = await axios.get('https://api.zendrop.com/v2/products', { 
                     params: { limit: 3 },
                     headers: { 'Authorization': `Bearer ${ZENDROP_API_KEY}` } 
                 });
-                if(zenRes.data?.products) items = zenRes.data.products.map(p => ({
-                    name: p.title, image: p.images?.[0] || '', price: p.variants?.[0]?.retail_price || "29.99", variant_id: p.variants?.[0]?.id, source: 'Zendrop'
-                }));
-            } catch(e) { report += "❌ Zendrop API Failed\n"; }
+                if(zenRes.data?.products) {
+                    items = zenRes.data.products.map(p => ({
+                        name: p.title, image: p.images?.[0] || '', price: p.variants?.[0]?.retail_price || "29.99", variant_id: p.variants?.[0]?.id, source: 'Zendrop'
+                    }));
+                } else {
+                    await sendTelegram(`⚠️ <b>Zendrop Data Empty:</b> ${JSON.stringify(zenRes.data)}`);
+                }
+            } catch(e) { 
+                const errorMsg = e.response?.data?.message || e.response?.data?.detail || e.message;
+                await sendTelegram(`❌ <b>Zendrop API Error:</b> ${errorMsg}`);
+                report += "❌ Zendrop API Failed\n"; 
+            }
         }
 
         if(items.length === 0) {
-            await sendTelegram("⚠️ No products found! Check Render .env keys or CJ/Zendrop accounts.");
+            await sendTelegram("🛑 <b>Pipeline Stopped:</b> No products fetched. Read the API errors above!");
             return;
         }
 
@@ -143,14 +154,14 @@ async function runGodModePipeline() {
             
             // AI SEO TITLE & MARKET PRICE FOR DISCOUNT
             const seoTitle = await askAI(`Rewrite this product name into a highly SEO optimized, clickbaity e-commerce title under 60 characters: ${item.name}. Output ONLY the title.`);
-            const marketPrice = (productPrice * 1.8).toFixed(2); // Fake MRP (80% higher for 50% off illusion)
+            const marketPrice = (productPrice * 1.8).toFixed(2); // Fake MRP for 50% off illusion
             
             const seoDesc = await askAI(`Write a high-converting 3-line e-commerce description for: ${item.name}. Focus on urgency, problem-solving, and free shipping.`);
             const specs = await askAI(`Create 4 specs for ${item.name} in format Spec:Value separated by |.`);
             
             const { data: newProduct, error } = await supabase.from('store_products').insert({
                 name: seoTitle || item.name, image: item.image, price_usd: productPrice, 
-                compare_at_price: marketPrice, // Added MRP for frontend discount tag
+                compare_at_price: marketPrice, 
                 description: seoDesc, specs: specs,
                 profit_margin: (productPrice * 0.4).toFixed(2), cj_base_cost: (productPrice * 0.5).toFixed(2),
                 cj_variant_id: item.source === 'CJ' ? item.variant_id : null,
@@ -204,7 +215,7 @@ RULES: Use unique wording. No fluff. Must sound like a real human review. 400 wo
             await new Promise(r => setTimeout(r, 15000)); 
         }
         
-        // 🚀 NEW FEATURE: DAILY "TOP PRODUCTS" LISTICLE BLOG (SEO GOLDMINE)
+        // DAILY "TOP PRODUCTS" LISTICLE BLOG 
         if(BLOG_ID && addedProducts.length > 0) {
             await sendTelegram("📝 Generating SEO Nuclear Listicle Blog...");
             let listHTML = `<h1>Top ${addedProducts.length} Trending Tech Gadgets You Must Buy in 2024</h1><p>If you are looking for the best tech gadgets with <b>FREE Worldwide Shipping</b>, you are in the right place! Our AI has handpicked these winning products for you today.</p>`;
