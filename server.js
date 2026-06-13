@@ -37,7 +37,6 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Mrhamdu123@";
 const WEBSITE_URL = "https://affiliatepilot-frontend.vercel.app";
 
-// Google Search Console Setup
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
 const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
@@ -70,12 +69,11 @@ async function getBloggerToken() {
 }
 
 async function submitToGoogleIndex(url) {
-    if(!GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) return console.log("Google Indexing skipped");
+    if(!GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) return;
     try {
         const auth = new google.auth.JWT(GOOGLE_CLIENT_EMAIL, null, GOOGLE_PRIVATE_KEY, ['https://www.googleapis.com/auth/indexing']);
         const indexing = google.indexing({ version: 'v3', auth });
         await indexing.urlNotifications.publish({ requestBody: { type: 'URL_UPDATED', url: url } });
-        console.log("Google Index Submitted:", url);
     } catch(e) { console.error("Google Index Error:", e.message); }
 }
 
@@ -88,31 +86,38 @@ async function pingIndexNow(productUrl) {
 // ==========================================
 async function runGodModePipeline() {
     await sendTelegram("🤖 <b>God Mode V9 Activated!</b>\n🔍 Fetching winning products from CJ/Zendrop...");
-    let report = "📊 <b>Daily Automation Report:</b>\n\n";
+    let report = "📊 <b>Daily Report:</b>\n\n";
     let productsAdded = 0;
 
     try {
-        // 1. FETCH PRODUCTS FROM CJ DROPSHIPPING (Direct API - Better than Amazon Scrape)
+        // 1. FETCH PRODUCTS FROM CJ DROPSHIPPING (Apify Hata Diya Gaya Hai)
         let items = [];
         if(CJ_ACCESS_TOKEN) {
-            const cjRes = await axios.get('https://developers.cjdropshipping.com/api/v1/products/list', {
-                params: { pageNum: 1, pageSize: 3 }, 
-                headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN }
-            });
-            if(cjRes.data?.data?.list) items = cjRes.data.data.list.map(p => ({
-                name: p.productNameEn, image: p.img, price: p.sellPrice, variant_id: p.vid, source: 'CJ'
-            }));
+            try {
+                const cjRes = await axios.get('https://developers.cjdropshipping.com/api/v1/products/list', {
+                    params: { pageNum: 1, pageSize: 2 }, 
+                    headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN }
+                });
+                if(cjRes.data?.data?.list) items = cjRes.data.data.list.map(p => ({
+                    name: p.productNameEn, image: p.img, price: p.sellPrice, variant_id: p.vid, source: 'CJ'
+                }));
+            } catch(e) { report += "❌ CJ API Failed\n"; }
         }
 
-        // 2. FETCH FROM ZENDROP IF NEEDED
+        // 2. FETCH FROM ZENDROP IF CJ FAILS
         if(items.length === 0 && ZENDROP_API_KEY) {
-            const zenRes = await axios.get('https://api.zendrop.com/v1/products', { headers: { 'Authorization': `Bearer ${ZENDROP_API_KEY}` } });
-            if(zenRes.data?.products) items = zenRes.data.products.map(p => ({
-                name: p.title, image: p.image, price: p.variants[0]?.retail_price || "29.99", variant_id: p.variants[0]?.id, source: 'Zendrop'
-            }));
+            try {
+                const zenRes = await axios.get('https://api.zendrop.com/v1/products', { headers: { 'Authorization': `Bearer ${ZENDROP_API_KEY}` } });
+                if(zenRes.data?.products) items = zenRes.data.products.map(p => ({
+                    name: p.title, image: p.image, price: p.variants[0]?.retail_price || "29.99", variant_id: p.variants[0]?.id, source: 'Zendrop'
+                }));
+            } catch(e) { report += "❌ Zendrop API Failed\n"; }
         }
 
-        if(items.length === 0) return await sendTelegram("⚠️ No products found from CJ/Zendrop.");
+        if(items.length === 0) {
+            await sendTelegram("⚠️ No products found from CJ/Zendrop. Check API keys in Render .env!");
+            return;
+        }
 
         for(const item of items) {
             const productPrice = parseFloat(item.price || 29.99).toFixed(2);
@@ -131,18 +136,39 @@ async function runGodModePipeline() {
             
             const productLink = `${WEBSITE_URL}/product/${newProduct.id}`;
             pingIndexNow(productLink);
-            submitToGoogleIndex(productLink); // GOOGLE SEARCH CONSOLE INDEXING
+            submitToGoogleIndex(productLink); 
 
             // PUBLIC CHANNEL DEAL
             await sendTelegram(`🆕 <b>New Winning Product Live!</b>\n📦 ${item.name}\n💰 $${productPrice} (FREE Shipping)\n🔗 <a href="${productLink}">Shop Now!</a>`, true);
 
-            // BLOG GENERATION
+            // 📈 NUCLEAR SEO BLOG PIPELINE FOR BLOGGER.COM
             if(BLOG_ID) {
-                const blogHTML = await askAI(`Write an elite SEO product review blog for "${item.name}". Use H1, H2, lists. Include <img src="${item.image}"> after H1. Add buy button linking to ${productLink}.`);
+                const blogPrompt = `You are an elite SEO content writer for 'Affiliate Pilot'. Write a highly engaging, SEO-optimized blog post about: "${item.name}" (Price: $${productPrice}).
+
+STRICT HTML STRUCTURE RULES (Output ONLY valid HTML, no markdown, no \`\`\`):
+1. <h1>${item.name} Review: Is It Worth Buying in 2024?</h1>
+2. <p><i>Looking for the best deal on ${item.name}? Read our honest review and get FREE Worldwide Shipping today!</i></p>
+3. <img src="${item.image}" alt="${item.name} Honest Review" style="width:100%;max-width:600px;border-radius:8px;margin:15px 0;">
+4. <h2>What is ${item.name}?</h2><p>Write 100 words explaining the product and the problem it solves.</p>
+5. <h2>Key Features & Benefits</h2><ul><li>Feature 1: Benefit</li><li>Feature 2: Benefit</li><li>Feature 3: Benefit</li></ul>
+6. <h2>Pros and Cons</h2><h3>Pros</h3><ul><li>Pro 1</li><li>Pro 2</li></ul><h3>Cons</h3><ul><li>Con 1</li></ul>
+7. <h2>Why Buy from Affiliate Pilot?</h2><p>Highlight FREE Worldwide Shipping, Buyer Protection, and Fast Delivery.</p>
+8. <h2>Final Verdict</h2><p>Give a strong 2-sentence conclusion.</p>
+9. <div style="text-align:center; margin:30px 0; padding:20px; background:#fff3cd; border-radius:12px; border:2px solid #ffc107;"><h3>🔥 Grab Yours Today!</h3><p>Don't miss out on this deal. Click below to buy with FREE Shipping!</p><a href="${productLink}" style="background-color:#f59e0b; color:#000; padding:15px 30px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:18px; display:inline-block;">Buy ${item.name} Now →</a></div>
+
+RULES: Use unique wording. No fluff. Must sound like a real human review. Make it 500 words long.`;
+
+                const blogHTML = await askAI(blogPrompt);
                 if(blogHTML) {
                     const bToken = await getBloggerToken();
-                    await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, { title: `${item.name} Review: Is It Worth Buying?`, content: blogHTML }, { headers: { Authorization: `Bearer ${bToken}` } });
-                    report += "✅ Blog Posted\n";
+                    await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
+                        kind: 'blogger#post', 
+                        title: `${item.name} Review: Is It Worth Buying? Pros & Cons`, 
+                        content: blogHTML,
+                        labels: ["Review", "Best Deals", "Tech Gadgets", item.name.split(' ')[0]] // SEO TAGS
+                    }, { headers: { Authorization: `Bearer ${bToken}` } });
+                    
+                    report += "✅ SEO Blog Posted\n";
                 }
             }
 
@@ -153,11 +179,11 @@ async function runGodModePipeline() {
                     report += "✅ Tweet Posted\n";
                 } catch(e) { report += "❌ Tweet Failed\n"; }
             }
-            await new Promise(r => setTimeout(r, 10000)); 
+            await new Promise(r => setTimeout(r, 15000)); 
         }
         
         report += `\n📦 Total Products Added: ${productsAdded}`;
-        await sendTelegram(report); // DAILY REPORT TO PERSONAL TG
+        await sendTelegram(report); 
 
     } catch(e) {
         await sendTelegram(`🚨 <b>Pipeline Crashed!</b>\nError: ${e.message}`);
@@ -178,7 +204,7 @@ app.get('/api/admin/stats', async (req, res) => {
     if(req.headers.authorization !== `Bearer ${ADMIN_PASSWORD}`) return res.status(401).json({ error: "Unauthorized" });
     try {
         const { count: totalOrders } = await supabase.from('orders').select('*', { count: 'exact', head: true });
-        const { data: orders } = await supabase.from('orders').select('profit_margin, cj_base_cost, price_usd, traffic_source, status, paypal_order_id, product_name').order('created_at', { ascending: false }).limit(10);
+        const { data: orders } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(10);
         
         let totalRevenue = 0, totalProfit = 0, totalCJCost = 0;
         const statusCounts = {}, trafficSources = {};
@@ -196,7 +222,6 @@ app.get('/api/admin/stats', async (req, res) => {
     } catch(e) { res.json({ success: false }); }
 });
 
-// SAVE ORDER & AUTO FULFILL CJ / ZENDROP
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -212,7 +237,6 @@ app.post('/api/save-order', async (req, res) => {
     
     await sendTelegram(`🚨 <b>NEW SALE! 💸</b>\n💰 Price: $${total_price}\n📈 Profit: $${total_profit}`);
     
-    // AUTO FULFILL LOGIC
     for(const p of products) {
         if(p.cj_variant_id && CJ_ACCESS_TOKEN) {
             try {
@@ -222,38 +246,34 @@ app.post('/api/save-order', async (req, res) => {
                     shippingAddress: { country: buyer_address.country, province: buyer_address.state, city: buyer_address.city, streetAddress: buyer_address.address, zipCode: buyer_address.zip, consigneeName: buyer_address.fullName, phone: buyer_address.phone }
                 }, { headers: { 'CJ-Access-Token': CJ_ACCESS_TOKEN } });
                 await supabase.from('orders').update({ status: 'Processing in CJ' }).eq('id', orderData.id);
-                await sendTelegram(`✅ <b>CJ Auto-Fulfilled!</b> Order: ${paypal_order_id}`);
-            } catch(e) { await sendTelegram(`❌ CJ Fulfillment Failed: ${e.message}`); }
+                await sendTelegram(`✅ <b>CJ Auto-Fulfilled!</b>`);
+            } catch(e) { await sendTelegram(`❌ CJ Fulfillment Failed`); }
         } 
         else if(p.zendrop_variant_id && ZENDROP_API_KEY) {
             try {
-                await axios.post('https://api.zendrop.com/v1/orders', {
-                    variant_id: p.zendrop_variant_id, quantity: 1,
-                    shipping_address: buyer_address
-                }, { headers: { 'Authorization': `Bearer ${ZENDROP_API_KEY}` } });
+                await axios.post('https://api.zendrop.com/v1/orders', { variant_id: p.zendrop_variant_id, quantity: 1, shipping_address: buyer_address }, { headers: { 'Authorization': `Bearer ${ZENDROP_API_KEY}` } });
                 await supabase.from('orders').update({ status: 'Processing in Zendrop' }).eq('id', orderData.id);
-                await sendTelegram(`✅ <b>Zendrop Auto-Fulfilled!</b> Order: ${paypal_order_id}`);
-            } catch(e) { await sendTelegram(`❌ Zendrop Fulfillment Failed: ${e.message}`); }
+                await sendTelegram(`✅ <b>Zendrop Auto-Fulfilled!</b>`);
+            } catch(e) { await sendTelegram(`❌ Zendrop Fulfillment Failed`); }
         }
     }
     res.json({ success: true, order: orderData });
 });
 
-// AI POWERFUL TOOLS BACKEND
 app.post('/api/reel-finder', async (req, res) => {
     const { url } = req.body;
-    const result = await askAI(`Analyze this Instagram Reel URL conceptually: ${url}. Guess the main trending tech/fashion product shown. Give me a realistic product name, an estimated price in USD, and 3 reasons why it's trending. Format: JSON {name, price, reasons[]}`);
+    const result = await askAI(`Analyze this Instagram Reel concept: ${url}. Guess the trending product. Give JSON {name, price, reasons[]}`);
     res.json({ success: true, data: JSON.parse(result || '{}') });
 });
 
 app.post('/api/get-coupon', async (req, res) => {
     const { store } = req.body;
-    const result = await askAI(`Generate 2 realistic-looking, high-urgency fake coupon codes for ${store} that look legit. Format: JSON [{code, discount, expiry}]`);
+    const result = await askAI(`Generate 2 realistic fake coupon codes for ${store}. Format: JSON [{code, discount, expiry}]`);
     res.json({ success: true, coupons: JSON.parse(result || '[]') });
 });
 
-// DAILY CRON JOB (10 AM IST)
-cron.schedule('30 4 * * *', () => runGodModePipeline());
+// DAILY CRON JOB (10:30 AM IST = 05:00 AM UTC)
+cron.schedule('0 5 * * *', () => runGodModePipeline());
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🤖 PilotBot V9 AWAKE on port ${PORT}!`));
