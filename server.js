@@ -81,29 +81,26 @@ async function pingIndexNow(productUrl) {
 }
 
 async function runGodModePipeline() {
-    await sendTelegram("🤖 <b>God Mode Activated!</b>\n🔍 Fetching REAL viral products...");
+    await sendTelegram("🤖 <b>God Mode Activated!</b>\n🔍 Fetching REAL products (Debug Mode ON)...");
     let report = "📊 <b>Daily Report:</b>\n\n";
     let addedProducts = [];
 
     try {
         let items = [];
 
-        // 1. APITY SCRAPER (If credits available)
+        // 1. APITY SCRAPER
         if(APIFY_TOKEN) {
             try {
                 const run = await apifyClient.actor("caoczia~amazon-search").call({ queries: "trending tech gadgets", maxItems: 2 });
                 const { items: apifyItems } = await apifyClient.dataset(run.defaultDatasetId).listItems();
                 if(apifyItems && apifyItems.length > 0) {
-                    items = apifyItems.map(p => ({
-                        name: p.title, image: p.imageUrl || p.mainImage, price: p.price || "29.99", 
-                        source: 'Amazon', source_url: p.url || `https://www.amazon.com/s?k=${encodeURIComponent(p.title)}`
-                    }));
-                    report += "✅ Apify Products Found\n";
+                    items = apifyItems.map(p => ({ name: p.title, image: p.imageUrl || p.mainImage, price: p.price || "29.99", source: 'Amazon', source_url: p.url }));
+                    report += "✅ Apify Found\n";
                 }
-            } catch(e) { report += "⚠️ Apify Failed.\n"; }
+            } catch(e) { report += "⚠️ Apify Failed (Out of credits?).\n"; }
         }
 
-        // 2. RAPIDAPI - REAL AMAZON DATA
+        // 2. RAPIDAPI - AMAZON (With Exact Error Logging)
         if(items.length === 0 && RAPID_AMAZON_API_KEY) {
             try {
                 const options = {
@@ -114,58 +111,62 @@ async function runGodModePipeline() {
                 };
                 const rapidRes = await axios.request(options);
                 if(rapidRes.data?.data?.products) {
-                    items = rapidRes.data.data.products.slice(0, 2).map(p => ({
-                        name: p.product_title, image: p.product_photo, price: p.product_price || "29.99", 
-                        source: 'Amazon', source_url: p.product_url
-                    }));
+                    items = rapidRes.data.data.products.slice(0, 2).map(p => ({ name: p.product_title, image: p.product_photo, price: p.product_price || "29.99", source: 'Amazon', source_url: p.product_url }));
                     report += "✅ RapidAPI Amazon Found\n";
-                }
-            } catch(e) { report += "⚠️ RapidAPI Amazon Failed.\n"; }
+                } else { await sendTelegram(`⚠️ RapidAPI Amazon: No products in data. Response: ${JSON.stringify(rapidRes.data?.message || "Empty")}`); }
+            } catch(e) { 
+                const errorDetail = e.response?.data?.message || e.message;
+                await sendTelegram(`❌ <b>RapidAPI Amazon Error:</b> ${errorDetail}`);
+                report += "❌ RapidAPI Amazon Failed\n"; 
+            }
         }
 
-        // 3. RAPIDAPI - REAL ALIEXPRESS DATA (Cheaper Products)
+        // 3. RAPIDAPI - ALIEXPRESS (With Exact Error Logging)
         if(items.length === 0 && RAPID_ALIEXPRESS_API_KEY) {
             try {
                 const options = {
                   method: 'GET',
                   url: 'https://real-time-aliexpress-data.p.rapidapi.com/item_search',
-                  params: { q: 'cheap viral tech gadgets', page: '1' },
+                  params: { q: 'cheap viral gadgets', page: '1' },
                   headers: { 'X-RapidAPI-Key': RAPID_ALIEXPRESS_API_KEY, 'X-RapidAPI-Host': 'real-time-aliexpress-data.p.rapidapi.com' }
                 };
                 const rapidRes = await axios.request(options);
                 if(rapidRes.data?.data?.item?.items) {
-                    items = rapidRes.data.data.item.items.slice(0, 2).map(p => ({
-                        name: p.title, image: p.item_imgs?.[0]?.url || '', price: p.min_price?.value || "14.99", 
-                        source: 'AliExpress', source_url: p.item_url
-                    }));
+                    items = rapidRes.data.data.item.items.slice(0, 2).map(p => ({ name: p.title, image: p.item_imgs?.[0]?.url || '', price: p.min_price?.value || "14.99", source: 'AliExpress', source_url: p.item_url }));
                     report += "✅ RapidAPI AliExpress Found\n";
-                }
-            } catch(e) { report += "⚠️ RapidAPI AliExpress Failed.\n"; }
+                } else { await sendTelegram(`⚠️ RapidAPI AliExpress: No products. Response: ${JSON.stringify(rapidRes.data?.message || "Empty")}`); }
+            } catch(e) { 
+                const errorDetail = e.response?.data?.message || e.message;
+                await sendTelegram(`❌ <b>RapidAPI AliExpress Error:</b> ${errorDetail}`);
+                report += "❌ RapidAPI AliExpress Failed\n"; 
+            }
         }
 
-        // 4. PRINTIFY (T-shirts, Mugs, Hoodies - High Margin)
+        // 4. PRINTIFY CATALOG (Fixed: Direct catalog fetch, no shop setup needed)
         if(items.length === 0 && PRINTIFY_API_KEY) {
             try {
-                const printRes = await axios.get('https://api.printify.com/v1/shops.json', { headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` } });
-                const shopId = printRes.data?.data?.[0]?.id || printRes.data?.[0]?.id;
-                if(shopId) {
-                    const prodRes = await axios.get(`https://api.printify.com/v1/shops/${shopId}/products.json`, {
-                        params: { limit: 2 }, headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` }
-                    });
-                    const prods = prodRes.data?.data || prodRes.data;
-                    if(prods && prods.length > 0) {
-                        items = prods.map(p => ({
-                            name: p.title, image: p.images?.[0]?.src || '', price: (parseFloat(p.variants?.[0]?.price || 1500) / 100).toFixed(2), 
-                            source: 'Printify', source_url: 'https://printify.com/app/dashboard/orders' // Link to dashboard for manual fulfill
-                        }));
-                        report += "✅ Printify Products Found\n";
-                    }
-                }
-            } catch(e) { report += "⚠️ Printify Failed.\n"; }
+                // Fetching T-Shirts from Printify Catalog directly
+                const catalogRes = await axios.get('https://api.printify.com/v1/catalog/blueprints.json', { 
+                    params: { limit: 2 }, 
+                    headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` } 
+                });
+                const blueprints = catalogRes.data?.data || catalogRes.data;
+                if(blueprints && blueprints.length > 0) {
+                    items = blueprints.slice(0, 2).map(p => ({
+                        name: p.title + " (Custom Print)", image: p.images?.[0]?.src || 'https://via.placeholder.com/400x400?text=T-Shirt', price: "29.99", 
+                        source: 'Printify', source_url: 'https://printify.com/app/dashboard/orders'
+                    }));
+                    report += "✅ Printify Catalog Found\n";
+                } else { await sendTelegram(`⚠️ Printify Catalog Empty: ${JSON.stringify(catalogRes.data)}`); }
+            } catch(e) { 
+                const errorDetail = e.response?.data?.message || e.response?.data?.error || e.message;
+                await sendTelegram(`❌ <b>Printify Error:</b> ${errorDetail}`);
+                report += "❌ Printify Failed\n"; 
+            }
         }
 
         if(items.length === 0) {
-            await sendTelegram("🛑 No real products found today! Check API keys or credits.");
+            await sendTelegram("🛑 All APIs failed! Read the error messages above to fix keys.");
             return;
         }
 
@@ -222,13 +223,10 @@ async function runGodModePipeline() {
     }
 }
 
-// ==========================================
-// 🌐 API ROUTES
-// ==========================================
 app.get('/', (req, res) => res.send('🤖 PilotBot is AWAKE!'));
 
 app.get('/run-pipeline', async (req, res) => {
-    res.send("🚀 Pipeline Triggered! Check Telegram.");
+    res.send("🚀 Pipeline Triggered! Check Telegram for detailed debug logs.");
     runGodModePipeline();
 });
 
@@ -237,7 +235,7 @@ app.post('/api/admin-login', (req, res) => {
     else res.json({ success: false });
 });
 
-app.get('/api/admin/stats', async (req, res) => {
+app.get('/api/admin-stats', async (req, res) => {
     if(req.headers.authorization !== `Bearer ${ADMIN_PASSWORD}`) return res.status(401).json({ error: "Unauthorized" });
     try {
         const { count: totalOrders } = await supabase.from('orders').select('*', { count: 'exact', head: true });
@@ -255,7 +253,6 @@ app.get('/api/admin/stats', async (req, res) => {
     } catch(e) { res.json({ success: false }); }
 });
 
-// 🔥 SMART ORDER ROUTE WITH DIRECT BUY LINKS
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -270,40 +267,14 @@ app.post('/api/save-order', async (req, res) => {
     
     const productDetails = products.map(p => {
         let buyLinkMsg = '';
-        if(p.source === 'Amazon') {
-            buyLinkMsg = `🛒 <b>Buy on Amazon:</b> <a href="${p.source_url}">Click Here to Buy</a>`;
-        } else if(p.source === 'AliExpress') {
-            buyLinkMsg = `🛒 <b>Buy on AliExpress:</b> <a href="${p.source_url}">Click Here to Buy</a>`;
-        } else if(p.source === 'Printify') {
-            buyLinkMsg = `🛒 <b>Fulfill via Printify:</b> <a href="https://printify.com/app/dashboard/orders">Go to Dashboard</a>`;
-        } else {
-            buyLinkMsg = `🛒 <b>Search on Amazon:</b> <a href="https://www.amazon.com/s?k=${encodeURIComponent(p.name)}">Click Here</a>`;
-        }
-        return `
-📦 <b>Product:</b> ${p.name}
-💵 <b>Buy Price (Approx):</b> $${p.cj_base_cost || (parseFloat(p.price_usd) * 0.5).toFixed(2)}
- ${buyLinkMsg}
-        `;
+        if(p.source === 'Amazon') buyLinkMsg = `🛒 <b>Buy on Amazon:</b> <a href="${p.source_url}">Click Here</a>`;
+        else if(p.source === 'AliExpress') buyLinkMsg = `🛒 <b>Buy on AliExpress:</b> <a href="${p.source_url}">Click Here</a>`;
+        else if(p.source === 'Printify') buyLinkMsg = `🛒 <b>Fulfill via Printify:</b> <a href="https://printify.com/app/dashboard/orders">Dashboard</a>`;
+        else buyLinkMsg = `🛒 <b>Search Amazon:</b> <a href="https://www.amazon.com/s?k=${encodeURIComponent(p.name)}">Click Here</a>`;
+        return `📦 <b>Product:</b> ${p.name}\n💵 <b>Buy Price (Approx):</b> $${p.cj_base_cost || (parseFloat(p.price_usd) * 0.5).toFixed(2)}\n${buyLinkMsg}`;
     }).join('\n');
 
-    const manualMsg = `
-🚨 <b>NEW MANUAL ORDER! 💸</b>
-
- ${productDetails}
-
-💰 <b>Customer Paid You:</b> $${total_price}
-📈 <b>Your Profit:</b> $${total_profit}
-
-🏠 <b>Ship To (Copy-Paste this address):</b>
-👤 ${buyer_address.fullName || 'N/A'}
-📍 ${buyer_address.address || 'N/A'}, ${buyer_address.city || 'N/A'}
-🗺️ ${buyer_address.state || 'N/A'}, ${buyer_address.zip || 'N/A'}
-🌍 ${buyer_address.country || 'N/A'}
-📞 ${buyer_address.phone || 'N/A'}
-✉️ ${buyer_email || 'N/A'}
-
-<i>💡 Tip: Click the Buy links above, add to cart, and paste the Ship To address!</i>
-    `;
+    const manualMsg = `🚨 <b>NEW MANUAL ORDER! 💸</b>\n\n${productDetails}\n\n💰 <b>Customer Paid:</b> $${total_price}\n📈 <b>Your Profit:</b> $${total_profit}\n\n🏠 <b>Ship To:</b>\n👤 ${buyer_address.fullName || 'N/A'}\n📍 ${buyer_address.address || 'N/A'}, ${buyer_address.city || 'N/A'}\n🗺️ ${buyer_address.state || 'N/A'}, ${buyer_address.zip || 'N/A'}\n🌍 ${buyer_address.country || 'N/A'}\n📞 ${buyer_address.phone || 'N/A'}\n✉️ ${buyer_email || 'N/A'}`;
     
     await sendTelegram(manualMsg.trim());
     res.json({ success: true, order: orderData });
