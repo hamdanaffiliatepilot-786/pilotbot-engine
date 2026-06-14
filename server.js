@@ -79,8 +79,8 @@ async function pingIndexNow(productUrl) {
 }
 
 async function runGodModePipeline() {
-    await sendTelegram("🚀 <b>Marketing Beast V15 Activated!</b>\n🔍 Hunting viral products & marketing targets...");
-    let report = "📊 <b>Daily V15 Report:</b>\n\n";
+    await sendTelegram("🚀 <b>Marketing Beast V16 Activated!</b>\n🔍 Hunting unique viral products...");
+    let report = "📊 <b>Daily Report:</b>\n\n";
     let addedProducts = [];
 
     try {
@@ -90,13 +90,13 @@ async function runGodModePipeline() {
         if(PRINTIFY_API_KEY) {
             try {
                 const catalogRes = await axios.get('https://api.printify.com/v1/catalog/blueprints.json', { 
-                    params: { limit: 2 }, 
+                    params: { limit: 3 }, 
                     headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` } 
                 });
                 const blueprints = catalogRes.data?.data || catalogRes.data;
                 if(blueprints && blueprints.length > 0) {
-                    items = blueprints.slice(0, 2).map(p => ({
-                        name: p.title + " (Premium Print)", image: p.images?.[0]?.src || 'https://via.placeholder.com/400x400?text=T-Shirt', price: "29.99", 
+                    items = blueprints.slice(0, 3).map(p => ({
+                        name: p.title, image: p.images?.[0]?.src || '', price: "29.99", 
                         source: 'Printify', source_url: 'https://printify.com/app/dashboard/orders'
                     }));
                     report += "✅ Printify Found\n";
@@ -104,9 +104,9 @@ async function runGodModePipeline() {
             } catch(e) { report += "⚠️ Printify Failed. Using AI.\n"; }
         }
 
-        // 2. AI VIRAL PRODUCT HUNTER
+        // 2. AI VIRAL PRODUCT HUNTER (No Duplicates)
         if(items.length === 0) {
-            const aiProducts = await askAI(`You are a viral product hunter. Give me 2 highly trending, high-demand viral products right now (like TikTok viral items, smart home tech, or fashion gadgets) under $30. Give real generic names like 'Sunset Lamp' or 'Magnetic Phone Mount'. Give output STRICTLY in JSON array format: [{ "name": "Product Name", "price": "19.99" }]. Output ONLY the JSON array.`);
+            const aiProducts = await askAI(`You are a viral product hunter. Give me 2 unique, highly trending products right now (e.g., TikTok viral gadgets, smart home tech). Do not repeat common items like 'Sunset Lamp'. Give real generic names like 'Magnetic Phone Mount' or 'Mini Drone'. Give output STRICTLY in JSON array format: [{ "name": "Product Name", "price": "19.99" }]. Output ONLY the JSON array.`);
             
             if(aiProducts) {
                 try {
@@ -115,7 +115,8 @@ async function runGodModePipeline() {
                         parsed.forEach(p => {
                             items.push({ 
                                 name: p.name, 
-                                image: `https://via.placeholder.com/400x400?text=${encodeURIComponent(p.name.substring(0,15))}`, 
+                                // High Quality Real Product Image Auto-Fetcher (No API Key Needed!)
+                                image: `https://loremflickr.com/800/800/${encodeURIComponent(p.name)},gadget`, 
                                 price: p.price, 
                                 source: 'AliExpress', 
                                 source_url: `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(p.name)}` 
@@ -133,6 +134,13 @@ async function runGodModePipeline() {
         }
 
         for(const item of items) {
+            // 🔥 DUPLICATE CHECK (Same product 2 baar add nahi hoga)
+            const { data: existing } = await supabase.from('store_products').select('id').eq('name', item.name).single();
+            if(existing) {
+                report += `⚠️ Skipped Duplicate: ${item.name}\n`;
+                continue; 
+            }
+
             const productPrice = parseFloat(String(item.price).replace(/[^0-9.]/g, '') || 29.99).toFixed(2);
             
             const seoDesc = await askAI(`Write a high-converting 3-line e-commerce description for: ${item.name}. Focus on urgency and free shipping.`);
@@ -157,13 +165,8 @@ async function runGodModePipeline() {
 
             await sendTelegram(`🆕 <b>New Product Live!</b>\n📦 ${item.name}\n💰 $${productPrice}\n🔗 <a href="${productLink}">Shop Now!</a>`, true);
 
-            // 🔥 POWER SEO LISTICLE BLOG (Traffic Magnet)
             if(BLOG_ID) {
-                const blogPrompt = `You are an elite SEO blogger. Write a highly engaging listicle blog titled "Top 5 ${item.name} Alternatives & Accessories in 2024". 
-                In the #1 spot, feature the main product: "${item.name}" with image ${item.image}, explaining why it's the best deal. 
-                For spots 2-5, mention generic related items. 
-                At the end of the #1 spot, add a big yellow HTML button: <a href="${productLink}" style="background-color:#f59e0b; color:#000; padding:15px 30px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:18px; display:inline-block;">Buy ${item.name} with FREE Shipping →</a>
-                Use H1, H2, lists. Make it 500 words. Output STRICT HTML only.`;
+                const blogPrompt = `You are an elite SEO blogger. Write a highly engaging listicle blog titled "Top 5 ${item.name} Alternatives & Accessories in 2024". In the #1 spot, feature the main product: "${item.name}" with image ${item.image}, explaining why it's the best deal. For spots 2-5, mention generic related items. At the end of the #1 spot, add a big yellow HTML button: <a href="${productLink}" style="background-color:#f59e0b; color:#000; padding:15px 30px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:18px; display:inline-block;">Buy ${item.name} with FREE Shipping →</a>. Use H1, H2, lists. Make it 500 words. Output STRICT HTML only.`;
 
                 const blogHTML = await askAI(blogPrompt);
                 if(blogHTML) {
@@ -171,29 +174,27 @@ async function runGodModePipeline() {
                     await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
                         kind: 'blogger#post', title: `Top 5 ${item.name} Accessories & Deals (2024)`, content: blogHTML, labels: ["Review", "Top 5", "Deal"]
                     }, { headers: { Authorization: `Bearer ${bToken}` } });
-                    report += "✅ SEO Listicle Blog Posted\n";
+                    report += "✅ SEO Blog Posted\n";
                 }
             }
 
-            // 🎯 MARKETING HUNTER (Find places to drop links)
             if(APIFY_TOKEN) {
                 try {
                     const run = await apifyClient.actor("apify/google-search-scraper").call({
-                        queries: `site:reddit.com OR site:quora.com "${item.name}"`, 
-                        maxPagesPerQuery: 1
+                        queries: `site:reddit.com OR site:quora.com "${item.name}"`, maxPagesPerQuery: 1
                     });
                     const { items: searchItems } = await apifyClient.dataset(run.defaultDatasetId).listItems();
                     if(searchItems && searchItems.length > 0) {
                         const targetLink = searchItems[0].url;
-                        await sendTelegram(`🎯 <b>Marketing Target Found!</b>\nPeople are talking about ${item.name} here:\n🔗 <a href="${targetLink}">Click to Drop Your Link!</a>\n\n<i>Tip: Write a helpful comment and drop your website link: ${productLink}</i>`);
+                        await sendTelegram(`🎯 <b>Marketing Target!</b>\nPeople talking about ${item.name}:\n🔗 <a href="${targetLink}">Drop Your Link Here!</a>`);
                         report += "✅ Marketing Target Found\n";
                     }
-                } catch(e) { report += "⚠️ Marketing Hunter Failed (Apify credits?).\n"; }
+                } catch(e) { report += "⚠️ Marketing Hunter Failed.\n"; }
             }
 
             if(twitterClient) {
                 try {
-                    await twitterClient.v2.tweet(`🔥 Viral Deal: ${item.name}!\n🚚 FREE Worldwide Shipping\n💰 Only $${productPrice}\n\nGrab it 👇\n${productLink}\n\n#Trending #TechDeals`);
+                    await twitterClient.v2.tweet(`🔥 Viral Deal: ${item.name}!\n🚚 FREE Shipping\n💰 $${productPrice}\n\nGrab it 👇\n${productLink}\n\n#Trending`);
                     report += "✅ Tweet Posted\n";
                 } catch(e) { report += "❌ Tweet Failed\n"; }
             }
@@ -208,10 +209,10 @@ async function runGodModePipeline() {
     }
 }
 
-app.get('/', (req, res) => res.send('🤖 Marketing Beast V15 is AWAKE!'));
+app.get('/', (req, res) => res.send('🤖 Marketing Beast V16 is AWAKE!'));
 
 app.get('/run-pipeline', async (req, res) => {
-    res.send("🚀 V15 Pipeline Triggered! Check Telegram.");
+    res.send("🚀 V16 Triggered! Check Telegram.");
     runGodModePipeline();
 });
 
@@ -238,7 +239,6 @@ app.get('/api/admin-stats', async (req, res) => {
     } catch(e) { res.json({ success: false }); }
 });
 
-// 🔥 SMART ORDER ROUTE WITH CHEAPEST BUY LINKS
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -254,22 +254,17 @@ app.post('/api/save-order', async (req, res) => {
     const productDetails = products.map(p => {
         let buyLinkMsg = '';
         if(p.source === 'Printify') {
-            buyLinkMsg = `🛒 <b>Fulfill via Printify:</b> <a href="https://printify.com/app/dashboard/orders">Go to Dashboard</a>`;
+            buyLinkMsg = `🛒 <b>Fulfill Printify:</b> <a href="https://printify.com/app/dashboard/orders">Dashboard</a>`;
         } else {
             const aliLink = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(p.name)}`;
             const temuLink = `https://www.temu.com/search_result.html?search_key=${encodeURIComponent(p.name)}`;
             const googleShoppingLink = `https://www.google.com/search?q=buy+${encodeURIComponent(p.name)}&tbm=shop`;
-            buyLinkMsg = `
-🛒 <b>Find Cheapest Price:</b>
-🇨🇳 <b>AliExpress:</b> <a href="${aliLink}">Click Here</a>
-🇨🇳 <b>Temu (Super Cheap):</b> <a href="${temuLink}">Click Here</a>
-🔍 <b>Google Shopping:</b> <a href="${googleShoppingLink}">Compare All Sites</a>
-            `;
+            buyLinkMsg = `🛒 <b>AliExpress:</b> <a href="${aliLink}">Link</a>\n🛒 <b>Temu:</b> <a href="${temuLink}">Link</a>\n🔍 <b>Google:</b> <a href="${googleShoppingLink}">Link</a>`;
         }
-        return `📦 <b>Product:</b> ${p.name}\n💵 <b>Buy Price (Approx):</b> $${p.cj_base_cost || (parseFloat(p.price_usd) * 0.5).toFixed(2)}\n${buyLinkMsg}`;
+        return `📦 <b>Product:</b> ${p.name}\n💵 <b>Buy Price:</b> $${p.cj_base_cost || (parseFloat(p.price_usd) * 0.5).toFixed(2)}\n${buyLinkMsg}`;
     }).join('\n');
 
-    const manualMsg = `🚨 <b>NEW MANUAL ORDER! 💸</b>\n\n${productDetails}\n\n💰 <b>Customer Paid:</b> $${total_price}\n📈 <b>Your Profit:</b> $${total_profit}\n\n🏠 <b>Ship To (Copy-Paste):</b>\n👤 ${buyer_address.fullName || 'N/A'}\n📍 ${buyer_address.address || 'N/A'}, ${buyer_address.city || 'N/A'}\n🗺️ ${buyer_address.state || 'N/A'}, ${buyer_address.zip || 'N/A'}\n🌍 ${buyer_address.country || 'N/A'}\n📞 ${buyer_address.phone || 'N/A'}\n✉️ ${buyer_email || 'N/A'}`;
+    const manualMsg = `🚨 <b>NEW ORDER! 💸</b>\n\n${productDetails}\n\n💰 <b>Paid:</b> $${total_price}\n📈 <b>Profit:</b> $${total_profit}\n\n🏠 <b>Ship To:</b>\n👤 ${buyer_address.fullName || 'N/A'}\n📍 ${buyer_address.address || 'N/A'}, ${buyer_address.city || 'N/A'}\n🗺️ ${buyer_address.state || 'N/A'}, ${buyer_address.zip || 'N/A'}\n🌍 ${buyer_address.country || 'N/A'}\n📞 ${buyer_address.phone || 'N/A'}\n✉️ ${buyer_email || 'N/A'}`;
     
     await sendTelegram(manualMsg.trim());
     res.json({ success: true, order: orderData });
@@ -290,4 +285,4 @@ app.post('/api/get-coupon', async (req, res) => {
 cron.schedule('0 5 * * *', () => runGodModePipeline());
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🤖 Marketing Beast V15 AWAKE on port ${PORT}!`));
+app.listen(PORT, () => console.log(`🤖 Marketing Beast V16 AWAKE on port ${PORT}!`));
