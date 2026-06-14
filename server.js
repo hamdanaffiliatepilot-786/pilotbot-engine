@@ -11,7 +11,7 @@ const { google } = require('googleapis');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json()));
 
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
@@ -78,36 +78,69 @@ async function pingIndexNow(productUrl) {
 }
 
 async function runGodModePipeline() {
-    await sendTelegram("🤖 <b>God Mode Activated (Apify+SEO)!</b>\n🔍 Fetching viral products from Amazon...");
+    await sendTelegram("🤖 <b>God Mode Activated!</b>\n🔍 Fetching viral products...");
     let report = "📊 <b>Daily Report:</b>\n\n";
     let addedProducts = [];
 
     try {
-        // APITY AMAZON SCRAPER (ORIGINAL WORKING SETUP)
-        const run = await apifyClient.actor("apify/amazon-best-sellers").call({ maxItems: 2 });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+        let items = [];
 
-        if(!items || items.length === 0) {
-            await sendTelegram("⚠️ No products found from Apify today.");
+        // 1. APITY SCRAPER (Amazon)
+        if(APIFY_TOKEN) {
+            try {
+                const run = await apifyClient.actor("caoczia~amazon-search").call({ 
+                    queries: "trending tech gadgets", maxItems: 2 
+                });
+                const { items: apifyItems } = await apifyClient.dataset(run.defaultDatasetId).listItems();
+                if(apifyItems && apifyItems.length > 0) {
+                    items = apifyItems.map(p => ({
+                        name: p.title, image: p.imageUrl || p.mainImage, price: p.price || "29.99", 
+                        source: 'Amazon', source_url: p.url || `https://www.amazon.com/s?k=${encodeURIComponent(p.title)}`
+                    }));
+                    report += "✅ Apify Amazon Products Found\n";
+                }
+            } catch(e) { 
+                await sendTelegram("⚠️ Apify failed. Using Free API Backup...");
+                report += "⚠️ Apify Failed. Using Backup...\n";
+            }
+        }
+
+        // 2. FREE API BACKUP (100% Uptime Guarantee)
+        if(items.length === 0) {
+            try {
+                const randomSkip = Math.floor(Math.random() * 50);
+                const freeRes = await axios.get(`https://dummyjson.com/products?limit=2&skip=${randomSkip}`);
+                if(freeRes.data?.products) {
+                    items = freeRes.data.products.map(p => ({
+                        name: p.title, image: p.images?.[0] || '', price: p.price || "19.99", 
+                        source: 'FreeAPI', source_url: `https://www.amazon.com/s?k=${encodeURIComponent(p.title)}`
+                    }));
+                    report += "✅ Free API Products Found (Backup)\n";
+                }
+            } catch(e2) { 
+                await sendTelegram("❌ Free API also failed!"); 
+            }
+        }
+
+        if(items.length === 0) {
+            await sendTelegram("🛑 No products found from any source today.");
             return;
         }
 
         for(const item of items) {
-            const productName = item.title;
-            const productImage = item.imageUrl || item.mainImage;
-            const productPrice = item.price || "29.99";
+            const productPrice = parseFloat(String(item.price).replace(/[^0-9.]/g, '') || 29.99).toFixed(2);
             
-            const seoDesc = await askAI(`Write a high-converting 3-line e-commerce description for: ${productName}. Focus on urgency and free shipping.`);
-            const specs = await askAI(`Create 4 specs for ${productName} in format Spec:Value separated by |.`);
-            const marketPrice = (parseFloat(String(productPrice).replace(/[^0-9.]/g, '') || 29.99) * 1.8).toFixed(2);
+            const seoDesc = await askAI(`Write a high-converting 3-line e-commerce description for: ${item.name}. Focus on urgency and free shipping.`);
+            const specs = await askAI(`Create 4 specs for ${item.name} in format Spec:Value separated by |.`);
+            const marketPrice = (productPrice * 1.8).toFixed(2);
 
             const { data: newProduct, error } = await supabase.from('store_products').insert({
-                name: productName, image: productImage, price_usd: String(productPrice).replace(/[^0-9.]/g, '') || "29.99",
-                compare_at_price: marketPrice,
-                description: seoDesc, specs: specs, 
-                profit_margin: (parseFloat(String(productPrice).replace(/[^0-9.]/g, '') || 29.99) * 0.4).toFixed(2), 
-                cj_base_cost: (parseFloat(String(productPrice).replace(/[^0-9.]/g, '') || 29.99) * 0.5).toFixed(2),
-                source: 'Amazon'
+                name: item.name, image: item.image, price_usd: productPrice, 
+                compare_at_price: marketPrice, description: seoDesc, specs: specs, 
+                profit_margin: (productPrice * 0.4).toFixed(2), 
+                cj_base_cost: (productPrice * 0.5).toFixed(2),
+                source: item.source,
+                source_url: item.source_url
             }).select().single();
 
             if(error || !newProduct) { console.error("Supabase Error:", error); continue; }
@@ -117,14 +150,14 @@ async function runGodModePipeline() {
             pingIndexNow(productLink);
             submitToGoogleIndex(productLink); 
 
-            await sendTelegram(`🆕 <b>New Product Live!</b>\n📦 ${productName}\n💰 $${productPrice}\n🔗 <a href="${productLink}">Shop Now!</a>`, true);
+            await sendTelegram(`🆕 <b>New Product Live!</b>\n📦 ${item.name}\n💰 $${productPrice}\n🔗 <a href="${productLink}">Shop Now!</a>`, true);
 
             if(BLOG_ID) {
-                const blogHTML = await askAI(`Write elite SEO blog for "${productName}" ($${productPrice}). HTML only. H1 title, image ${productImage}, H2 features, Pros/Cons, H2 Why Buy (Free shipping), and a yellow Buy Now button linking to ${productLink}. 400 words.`);
+                const blogHTML = await askAI(`Write elite SEO blog for "${item.name}" ($${productPrice}). HTML only. H1 title, image ${item.image}, H2 features, Pros/Cons, H2 Why Buy (Free shipping), and a yellow Buy Now button linking to ${productLink}. 400 words.`);
                 if(blogHTML) {
                     const bToken = await getBloggerToken();
                     await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
-                        kind: 'blogger#post', title: `${productName} Review: Best Deal?`, content: blogHTML, labels: ["Review", "Deal"]
+                        kind: 'blogger#post', title: `${item.name} Review: Best Deal?`, content: blogHTML, labels: ["Review", "Deal"]
                     }, { headers: { Authorization: `Bearer ${bToken}` } });
                     report += "✅ Blog Posted\n";
                 }
@@ -132,7 +165,7 @@ async function runGodModePipeline() {
 
             if(twitterClient) {
                 try {
-                    await twitterClient.v2.tweet(`🔥 Deal: ${productName}!\n🚚 FREE Shipping\n💰 Only $${productPrice}\n\nGrab it 👇\n${productLink}\n\n#TechDeals`);
+                    await twitterClient.v2.tweet(`🔥 Deal: ${item.name}!\n🚚 FREE Shipping\n💰 Only $${productPrice}\n\nGrab it 👇\n${productLink}\n\n#TechDeals`);
                     report += "✅ Tweet Posted\n";
                 } catch(e) { report += "❌ Tweet Failed\n"; }
             }
@@ -147,6 +180,9 @@ async function runGodModePipeline() {
     }
 }
 
+// ==========================================
+// 🌐 API ROUTES
+// ==========================================
 app.get('/', (req, res) => res.send('🤖 PilotBot is AWAKE!'));
 
 app.get('/run-pipeline', async (req, res) => {
@@ -159,7 +195,7 @@ app.post('/api/admin-login', (req, res) => {
     else res.json({ success: false });
 });
 
-app.get('/api/admin-stats', async (req, res) => { // Updated route name from stats to admin-stats
+app.get('/api/admin/stats', async (req, res) => {
     if(req.headers.authorization !== `Bearer ${ADMIN_PASSWORD}`) return res.status(401).json({ error: "Unauthorized" });
     try {
         const { count: totalOrders } = await supabase.from('orders').select('*', { count: 'exact', head: true });
@@ -177,6 +213,7 @@ app.get('/api/admin-stats', async (req, res) => { // Updated route name from sta
     } catch(e) { res.json({ success: false }); }
 });
 
+// 🔥 SMART ORDER ROUTE WITH DIRECT BUY LINKS
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -189,13 +226,27 @@ app.post('/api/save-order', async (req, res) => {
 
     if(error) return res.json({ success: false, error });
     
+    // Generate Smart Buy Links for Telegram
+    const productDetails = products.map(p => {
+        const amazonLink = p.source_url || `https://www.amazon.com/s?k=${encodeURIComponent(p.name)}`;
+        const aliExpressLink = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(p.name)}`;
+        return `
+📦 <b>Product:</b> ${p.name}
+💵 <b>Buy Price (Approx):</b> $${p.cj_base_cost || (parseFloat(p.price_usd) * 0.5).toFixed(2)}
+🛒 <b>Buy on Amazon:</b> <a href="${amazonLink}">Click Here to Buy</a>
+🛒 <b>Buy on AliExpress (Cheaper):</b> <a href="${aliExpressLink}">Click Here to Buy</a>
+        `;
+    }).join('\n');
+
     const manualMsg = `
-🛑 <b>NEW MANUAL ORDER!</b>
+🚨 <b>NEW MANUAL ORDER! 💸</b>
 
-📦 <b>Product:</b> ${products.map(p=>p.name).join(', ')}
-💰 <b>Price Paid:</b> $${total_price}
+ ${productDetails}
 
-🏠 <b>Ship To:</b>
+💰 <b>Customer Paid You:</b> $${total_price}
+📈 <b>Your Profit:</b> $${total_profit}
+
+🏠 <b>Ship To (Copy-Paste this address):</b>
 👤 ${buyer_address.fullName || 'N/A'}
 📍 ${buyer_address.address || 'N/A'}, ${buyer_address.city || 'N/A'}
 🗺️ ${buyer_address.state || 'N/A'}, ${buyer_address.zip || 'N/A'}
@@ -203,10 +254,10 @@ app.post('/api/save-order', async (req, res) => {
 📞 ${buyer_address.phone || 'N/A'}
 ✉️ ${buyer_email || 'N/A'}
 
-<i>Order this product on Amazon/AliExpress and paste the customer's address!</i>
+<i>💡 Tip: Click the Buy links above, add to cart, and paste the Ship To address!</i>
     `;
-    await sendTelegram(manualMsg.trim());
     
+    await sendTelegram(manualMsg.trim());
     res.json({ success: true, order: orderData });
 });
 
