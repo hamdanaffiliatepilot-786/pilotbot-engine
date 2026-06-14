@@ -11,7 +11,7 @@ const { google } = require('googleapis');
 
 const app = express();
 app.use(cors());
-app.use(express.json()));
+app.use(express.json()); // YE FIX KIYA GAYA HAI
 
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
@@ -213,7 +213,6 @@ app.get('/api/admin/stats', async (req, res) => {
     } catch(e) { res.json({ success: false }); }
 });
 
-// 🔥 SMART ORDER ROUTE WITH DIRECT BUY LINKS
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -226,7 +225,6 @@ app.post('/api/save-order', async (req, res) => {
 
     if(error) return res.json({ success: false, error });
     
-    // Generate Smart Buy Links for Telegram
     const productDetails = products.map(p => {
         const amazonLink = p.source_url || `https://www.amazon.com/s?k=${encodeURIComponent(p.name)}`;
         const aliExpressLink = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(p.name)}`;
