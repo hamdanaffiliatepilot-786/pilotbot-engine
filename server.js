@@ -11,12 +11,15 @@ const { google } = require('googleapis');
 
 const app = express();
 app.use(cors());
-app.use(express.json()); // YE FIX KIYA GAYA HAI
+app.use(express.json());
 
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
 const GROQ_KEY = process.env.GROQ_KEY; 
 const APIFY_TOKEN = process.env.APIFY_TOKEN;
+const RAPID_AMAZON_API_KEY = process.env.RAPID_AMAZON_API_KEY;
+const RAPID_ALIEXPRESS_API_KEY = process.env.RAPID_ALIEXPRESS_API_KEY;
+const PRINTIFY_API_KEY = process.env.PRINTIFY_API_KEY;
 const BLOGGER_CLIENT_ID = process.env.BLOGGER_CLIENT_ID;
 const BLOGGER_CLIENT_SECRET = process.env.BLOGGER_CLIENT_SECRET;
 const BLOGGER_REFRESH_TOKEN = process.env.BLOGGER_REFRESH_TOKEN;
@@ -78,52 +81,91 @@ async function pingIndexNow(productUrl) {
 }
 
 async function runGodModePipeline() {
-    await sendTelegram("🤖 <b>God Mode Activated!</b>\n🔍 Fetching viral products...");
+    await sendTelegram("🤖 <b>God Mode Activated!</b>\n🔍 Fetching REAL viral products...");
     let report = "📊 <b>Daily Report:</b>\n\n";
     let addedProducts = [];
 
     try {
         let items = [];
 
-        // 1. APITY SCRAPER (Amazon)
+        // 1. APITY SCRAPER (If credits available)
         if(APIFY_TOKEN) {
             try {
-                const run = await apifyClient.actor("caoczia~amazon-search").call({ 
-                    queries: "trending tech gadgets", maxItems: 2 
-                });
+                const run = await apifyClient.actor("caoczia~amazon-search").call({ queries: "trending tech gadgets", maxItems: 2 });
                 const { items: apifyItems } = await apifyClient.dataset(run.defaultDatasetId).listItems();
                 if(apifyItems && apifyItems.length > 0) {
                     items = apifyItems.map(p => ({
                         name: p.title, image: p.imageUrl || p.mainImage, price: p.price || "29.99", 
                         source: 'Amazon', source_url: p.url || `https://www.amazon.com/s?k=${encodeURIComponent(p.title)}`
                     }));
-                    report += "✅ Apify Amazon Products Found\n";
+                    report += "✅ Apify Products Found\n";
                 }
-            } catch(e) { 
-                await sendTelegram("⚠️ Apify failed. Using Free API Backup...");
-                report += "⚠️ Apify Failed. Using Backup...\n";
-            }
+            } catch(e) { report += "⚠️ Apify Failed.\n"; }
         }
 
-        // 2. FREE API BACKUP (100% Uptime Guarantee)
-        if(items.length === 0) {
+        // 2. RAPIDAPI - REAL AMAZON DATA
+        if(items.length === 0 && RAPID_AMAZON_API_KEY) {
             try {
-                const randomSkip = Math.floor(Math.random() * 50);
-                const freeRes = await axios.get(`https://dummyjson.com/products?limit=2&skip=${randomSkip}`);
-                if(freeRes.data?.products) {
-                    items = freeRes.data.products.map(p => ({
-                        name: p.title, image: p.images?.[0] || '', price: p.price || "19.99", 
-                        source: 'FreeAPI', source_url: `https://www.amazon.com/s?k=${encodeURIComponent(p.title)}`
+                const options = {
+                  method: 'GET',
+                  url: 'https://real-time-amazon-data.p.rapidapi.com/search',
+                  params: { query: 'trending tech gadgets under 30', country: 'US', page: '1' },
+                  headers: { 'X-RapidAPI-Key': RAPID_AMAZON_API_KEY, 'X-RapidAPI-Host': 'real-time-amazon-data.p.rapidapi.com' }
+                };
+                const rapidRes = await axios.request(options);
+                if(rapidRes.data?.data?.products) {
+                    items = rapidRes.data.data.products.slice(0, 2).map(p => ({
+                        name: p.product_title, image: p.product_photo, price: p.product_price || "29.99", 
+                        source: 'Amazon', source_url: p.product_url
                     }));
-                    report += "✅ Free API Products Found (Backup)\n";
+                    report += "✅ RapidAPI Amazon Found\n";
                 }
-            } catch(e2) { 
-                await sendTelegram("❌ Free API also failed!"); 
-            }
+            } catch(e) { report += "⚠️ RapidAPI Amazon Failed.\n"; }
+        }
+
+        // 3. RAPIDAPI - REAL ALIEXPRESS DATA (Cheaper Products)
+        if(items.length === 0 && RAPID_ALIEXPRESS_API_KEY) {
+            try {
+                const options = {
+                  method: 'GET',
+                  url: 'https://real-time-aliexpress-data.p.rapidapi.com/item_search',
+                  params: { q: 'cheap viral tech gadgets', page: '1' },
+                  headers: { 'X-RapidAPI-Key': RAPID_ALIEXPRESS_API_KEY, 'X-RapidAPI-Host': 'real-time-aliexpress-data.p.rapidapi.com' }
+                };
+                const rapidRes = await axios.request(options);
+                if(rapidRes.data?.data?.item?.items) {
+                    items = rapidRes.data.data.item.items.slice(0, 2).map(p => ({
+                        name: p.title, image: p.item_imgs?.[0]?.url || '', price: p.min_price?.value || "14.99", 
+                        source: 'AliExpress', source_url: p.item_url
+                    }));
+                    report += "✅ RapidAPI AliExpress Found\n";
+                }
+            } catch(e) { report += "⚠️ RapidAPI AliExpress Failed.\n"; }
+        }
+
+        // 4. PRINTIFY (T-shirts, Mugs, Hoodies - High Margin)
+        if(items.length === 0 && PRINTIFY_API_KEY) {
+            try {
+                const printRes = await axios.get('https://api.printify.com/v1/shops.json', { headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` } });
+                const shopId = printRes.data?.data?.[0]?.id || printRes.data?.[0]?.id;
+                if(shopId) {
+                    const prodRes = await axios.get(`https://api.printify.com/v1/shops/${shopId}/products.json`, {
+                        params: { limit: 2 }, headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` }
+                    });
+                    const prods = prodRes.data?.data || prodRes.data;
+                    if(prods && prods.length > 0) {
+                        items = prods.map(p => ({
+                            name: p.title, image: p.images?.[0]?.src || '', price: (parseFloat(p.variants?.[0]?.price || 1500) / 100).toFixed(2), 
+                            source: 'Printify', source_url: 'https://printify.com/app/dashboard/orders' // Link to dashboard for manual fulfill
+                        }));
+                        report += "✅ Printify Products Found\n";
+                    }
+                }
+            } catch(e) { report += "⚠️ Printify Failed.\n"; }
         }
 
         if(items.length === 0) {
-            await sendTelegram("🛑 No products found from any source today.");
+            await sendTelegram("🛑 No real products found today! Check API keys or credits.");
             return;
         }
 
@@ -213,6 +255,7 @@ app.get('/api/admin/stats', async (req, res) => {
     } catch(e) { res.json({ success: false }); }
 });
 
+// 🔥 SMART ORDER ROUTE WITH DIRECT BUY LINKS
 app.post('/api/save-order', async (req, res) => {
     const { paypal_order_id, products, buyer_email, buyer_address, traffic_source, total_price, total_profit } = req.body;
     if(!paypal_order_id || !products) return res.json({ success: false });
@@ -226,13 +269,20 @@ app.post('/api/save-order', async (req, res) => {
     if(error) return res.json({ success: false, error });
     
     const productDetails = products.map(p => {
-        const amazonLink = p.source_url || `https://www.amazon.com/s?k=${encodeURIComponent(p.name)}`;
-        const aliExpressLink = `https://www.aliexpress.com/wholesale?SearchText=${encodeURIComponent(p.name)}`;
+        let buyLinkMsg = '';
+        if(p.source === 'Amazon') {
+            buyLinkMsg = `🛒 <b>Buy on Amazon:</b> <a href="${p.source_url}">Click Here to Buy</a>`;
+        } else if(p.source === 'AliExpress') {
+            buyLinkMsg = `🛒 <b>Buy on AliExpress:</b> <a href="${p.source_url}">Click Here to Buy</a>`;
+        } else if(p.source === 'Printify') {
+            buyLinkMsg = `🛒 <b>Fulfill via Printify:</b> <a href="https://printify.com/app/dashboard/orders">Go to Dashboard</a>`;
+        } else {
+            buyLinkMsg = `🛒 <b>Search on Amazon:</b> <a href="https://www.amazon.com/s?k=${encodeURIComponent(p.name)}">Click Here</a>`;
+        }
         return `
 📦 <b>Product:</b> ${p.name}
 💵 <b>Buy Price (Approx):</b> $${p.cj_base_cost || (parseFloat(p.price_usd) * 0.5).toFixed(2)}
-🛒 <b>Buy on Amazon:</b> <a href="${amazonLink}">Click Here to Buy</a>
-🛒 <b>Buy on AliExpress (Cheaper):</b> <a href="${aliExpressLink}">Click Here to Buy</a>
+ ${buyLinkMsg}
         `;
     }).join('\n');
 
