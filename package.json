@@ -6,6 +6,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
     "apify-client": "^2.10.0",
     "axios": "^1.7.0",
     "cors": "^2.8.5",
