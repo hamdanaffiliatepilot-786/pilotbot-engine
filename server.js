@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
-const { ApifyClient } = require('apify-client');
 const axios = require('axios');
 const cron = require('node-cron');
 const cors = require('cors');
@@ -16,7 +15,6 @@ app.use(express.json());
 const SB_URL = process.env.SB_URL;
 const SB_KEY = process.env.SB_KEY;
 const GROQ_KEY = process.env.GROQ_KEY; 
-const APIFY_TOKEN = process.env.APIFY_TOKEN;
 const PRINTIFY_API_KEY = process.env.PRINTIFY_API_KEY;
 const BLOGGER_CLIENT_ID = process.env.BLOGGER_CLIENT_ID;
 const BLOGGER_CLIENT_SECRET = process.env.BLOGGER_CLIENT_SECRET;
@@ -37,7 +35,6 @@ const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n')
 
 const supabase = createClient(SB_URL, SB_KEY);
 const resend = new Resend(RESEND_API_KEY);
-const apifyClient = new ApifyClient({ token: APIFY_TOKEN });
 
 let twitterClient;
 if(TWITTER_API_KEY && TWITTER_API_SECRET && TWITTER_ACCESS_TOKEN && TWITTER_ACCESS_SECRET) {
@@ -47,7 +44,7 @@ if(TWITTER_API_KEY && TWITTER_API_SECRET && TWITTER_ACCESS_TOKEN && TWITTER_ACCE
 async function askAI(prompt) {
     try {
         const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-            model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], temperature: 0.7,
+            model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: prompt }], temperature: 0.9,
         }, { headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' } });
         return response.data.choices[0].message.content.replace(/```json/g, '').replace(/```/g, '').replace(/```html/g, '').replace(/```/g, '').trim();
     } catch(e) { console.error("AI Error:", e.message); return null; }
@@ -78,133 +75,134 @@ async function pingIndexNow(productUrl) {
     try { await axios.post('https://api.indexnow.org/IndexNow', { host: "affiliatepilot-frontend.vercel.app", key: "pilotbotindexkey123", urlList: [productUrl] }); } catch(e) {}
 }
 
-// 🖼️ IMAGE FIXER FUNCTION (Guaranteed to show images)
-function getBestImage(printifyImage, productName, category) {
-    // If Printify gives a valid HTTPS image, use it
-    if(printifyImage && printifyImage.startsWith('https')) return printifyImage;
-    // Fallback: High Quality Auto-Generated Image based on category and name (100% works on Next.js)
-    const searchQuery = encodeURIComponent(`${category} ${productName} fashion`);
-    return `https://loremflickr.com/800/800/${searchQuery}`;
-}
-
-async function runGodModePipeline() {
-    await sendTelegram("🏭 <b>Printify Beast V17 Activated!</b>\n📦 Importing categorized products with fixed images...");
-    let report = "📊 <b>Daily Report:</b>\n\n";
-    let addedProducts = [];
-
+// ==========================================
+// 🎨 AI DESIGNER AGENT
+// ==========================================
+async function runDesignerAgent() {
+    await sendTelegram("🎨 <b>AI Designer Agent Activated!</b>\n✨ Generating viral Print-on-Demand design...");
+    
     try {
-        if(!PRINTIFY_API_KEY) {
-            await sendTelegram("🛑 PRINTIFY_API_KEY missing in Render!");
-            return;
-        }
+        // STEP 1: AI Viral Concept & Image Prompt
+        const concept = await askAI(`Give me 1 viral Print-on-Demand t-shirt design concept for today. It should be funny, trending, or aesthetic.
+        Output STRICTLY in JSON: { "title": "Product Title (e.g., Funny Cat T-Shirt)", "image_prompt": "A detailed image prompt for AI to generate the design (flat vector, white background, bold text if any)", "category": "Men or Women or Kids" }`);
+        if(!concept) return await sendTelegram("🛑 AI Concept generation failed.");
 
-        const catalogRes = await axios.get('https://api.printify.com/v1/catalog/blueprints.json', { 
-            params: { limit: 20 }, 
-            headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` } 
-        });
-        const blueprints = catalogRes.data?.data || catalogRes.data;
+        const parsed = JSON.parse(concept);
+        const productTitle = parsed.title;
+        const imagePrompt = parsed.image_prompt;
+        const category = parsed.category || 'Men';
 
-        if(!blueprints || blueprints.length === 0) {
-            await sendTelegram("🛑 Printify catalog empty or API error.");
-            return;
-        }
+        // STEP 2: Generate Image using Free Pollinations AI
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(imagePrompt)}?width=1024&height=1024&nologo=true`;
+        await sendTelegram(`🖼️ Design Generated! <a href="${imageUrl}">Click to Preview</a>. Uploading to Printify...`);
 
-        for(const p of blueprints) {
-            const productName = p.title;
-            const productId = p.id.toString();
-
-            // DUPLICATE CHECK
-            const { data: existing } = await supabase.from('store_products').select('id').eq('source_id', productId).single();
-            if(existing) {
-                report += `⚠️ Skipped Duplicate: ${productName}\n`;
-                continue; 
-            }
-
-            // AI CATEGORIZER & PRICING
-            const aiDetails = await askAI(`For the Printify product "${productName}", give me:
-1. Catchy SEO title (under 60 chars).
-2. High-margin selling price USD (T-shirts: 29.99, Hoodies: 44.99, Mugs: 18.99, Phone Cases: 24.99). ONLY number.
-3. Category (Men, Women, Kids, Home, Accessories).
-4. 2-line description about premium quality and free shipping.
-Output STRICTLY JSON: { "title": "...", "price": "...", "category": "...", "desc": "..." }`);
-            
-            if(!aiDetails) continue;
-            
+        // STEP 3: Upload to Printify (Get Shop ID)
+        let printifyProductId = null;
+        if(PRINTIFY_API_KEY) {
             try {
-                const parsed = JSON.parse(aiDetails);
-                const productPrice = parseFloat(parsed.price || 29.99).toFixed(2);
-                const category = parsed.category || 'Accessories';
-                const seoTitle = parsed.title || productName;
-                const seoDesc = parsed.desc || 'Premium quality with FREE Worldwide Shipping.';
-                const marketPrice = (productPrice * 1.8).toFixed(2); 
+                const shopRes = await axios.get('https://api.printify.com/v1/shops.json', { headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` } });
+                const shopId = shopRes.data?.data?.[0]?.id || shopRes.data?.[0]?.id;
                 
-                // 🖼️ IMAGE FIX APPLIED HERE
-                const rawImage = p.images?.[0]?.src || '';
-                const finalImage = getBestImage(rawImage, productName, category);
-
-                const { data: newProduct, error } = await supabase.from('store_products').insert({
-                    name: seoTitle, image: finalImage, price_usd: productPrice, 
-                    compare_at_price: marketPrice, description: seoDesc, 
-                    specs: "Material:Premium|Print:High-Resolution|Quality:Guaranteed|Shipping:FREE", 
-                    profit_margin: (productPrice * 0.6).toFixed(2), 
-                    cj_base_cost: (productPrice * 0.4).toFixed(2),
-                    source: 'Printify', 
-                    source_url: 'https://printify.com/app/dashboard/orders',
-                    source_id: productId,
-                    category: category
-                }).select().single();
-
-                if(error || !newProduct) { console.error("Supabase Error:", error); continue; }
-                
-                addedProducts.push(newProduct);
-                const productLink = `${WEBSITE_URL}/product/${newProduct.id}`;
-                pingIndexNow(productLink);
-                submitToGoogleIndex(productLink); 
-
-                // SEO BLOG
-                if(BLOG_ID) {
-                    const blogHTML = await askAI(`Write viral SEO blog "Top 5 ${seoTitle} Gifts in 2024". Feature #1 product with image ${finalImage}. Add yellow buy button: <a href="${productLink}" style="background:#f59e0b;color:#000;padding:15px 30px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:18px;display:inline-block;">Buy Now →</a>. HTML only, 400 words.`);
-                    if(blogHTML) {
-                        const bToken = await getBloggerToken();
-                        await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
-                            kind: 'blogger#post', title: `Top 5 ${seoTitle} Gifts (2024)`, content: blogHTML, labels: [category, "Gift Guide"]
-                        }, { headers: { Authorization: `Bearer ${bToken}` } });
-                        report += "✅ Blog Posted\n";
+                if(shopId) {
+                    // Upload Image to Printify
+                    const uploadRes = await axios.post('https://api.printify.com/v1/uploads/images.json', {
+                        file_name: `${productTitle.replace(/[^a-z0-9]/gi, '_')}.png`,
+                        url: imageUrl
+                    }, { headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` } });
+                    
+                    const printifyImageId = uploadRes.data?.id;
+                    
+                    if(printifyImageId) {
+                        // Create Product in Printify (Blueprint 6 = Unisex T-Shirt)
+                        // Note: Variant IDs change based on provider. We use a standard default.
+                        await axios.post(`https://api.printify.com/v1/shops/${shopId}/products.json`, {
+                            title: productTitle,
+                            description: `Premium ${productTitle}. Made with love, shipped worldwide!`,
+                            blueprint_id: 6, // 6 is Standard T-Shirt
+                            print_provider_id: 1, // 1 is usually default
+                            variants: [
+                                { id: 17824, price: 2999, is_enabled: true }, // Default Black S
+                                { id: 17825, price: 2999, is_enabled: true }, // Default Black M
+                                { id: 17826, price: 2999, is_enabled: true }  // Default Black L
+                            ],
+                            print_areas: [
+                                {
+                                    variant_ids: [17824, 17825, 17826],
+                                    placeholders: [
+                                        {
+                                            position: "front",
+                                            images: [{ id: printifyImageId, x: 0.5, y: 0.5, scale: 1 }]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }, { headers: { 'Authorization': `Bearer ${PRINTIFY_API_KEY}` } });
+                        
+                        printifyProductId = "Uploaded";
+                        await sendTelegram("✅ <b>Product Created on Printify!</b> Go to dashboard to publish it.");
                     }
                 }
-
-                // 🎯 PINTEREST TRAFFIC HACK (Manual but 100% effective)
-                const pinterestMsg = `📌 <b>Pinterest Traffic Hack!</b>\n📦 Product: ${seoTitle}\n\n📝 <b>Title:</b> Best ${seoTitle} Gift Idea\n✍️ <b>Description:</b> Looking for the perfect ${category} gift? Get this premium ${seoTitle} with FREE Shipping! 🎁✨\n🔗 <b>Link:</b> ${productLink}\n\n<i>Copy this and post it on your Pinterest board!</i>`;
-                await sendTelegram(pinterestMsg);
-
-                if(twitterClient) {
-                    try {
-                        await twitterClient.v2.tweet(`🎁 Gift Idea: ${seoTitle}!\n🚚 FREE Shipping\n💰 $${productPrice}\n\nShop 👇\n${productLink}\n\n#Gifts #Trending`);
-                        report += "✅ Tweet Posted\n";
-                    } catch(e) { report += "❌ Tweet Failed\n"; }
-                }
-
-                await new Promise(r => setTimeout(r, 5000)); 
-            } catch(e) { console.error("Parse Error:", e); }
+            } catch(e) {
+                const errMsg = e.response?.data?.message || e.message;
+                await sendTelegram(`⚠️ <b>Printify Auto-Upload Failed:</b> ${errMsg}.\n\n🛠️ <b>Manual Fix:</b> Download the image and upload it yourself.`);
+            }
         }
+
+        // STEP 4: Add to Website (Supabase)
+        const productPrice = "29.99";
+        const marketPrice = "54.99";
+
+        const { data: newProduct, error } = await supabase.from('store_products').insert({
+            name: productTitle, image: imageUrl, price_usd: productPrice, 
+            compare_at_price: marketPrice, 
+            description: `Exclusive AI-Generated Design! Premium quality ${productTitle} with FREE Worldwide Shipping. Limited Edition!`, 
+            specs: "Material:Premium Cotton|Print:AI Generated|Quality:Exclusive|Shipping:FREE", 
+            profit_margin: "18.00", 
+            cj_base_cost: "12.00",
+            source: 'Printify (AI Design)', 
+            source_url: 'https://printify.com/app/dashboard/orders',
+            source_id: `ai_${Date.now()}`,
+            category: category
+        }).select().single();
+
+        if(error) { console.error("Supabase Error:", error); return; }
         
-        if(addedProducts.length > 0) {
-            await sendTelegram(`🆕 <b>${addedProducts.length} New Products Live!</b>`, true);
+        const productLink = `${WEBSITE_URL}/product/${newProduct.id}`;
+        pingIndexNow(productLink);
+        submitToGoogleIndex(productLink); 
+
+        await sendTelegram(`🆕 <b>New AI Design Live on Website!</b>\n📦 ${productTitle}\n💰 $${productPrice}\n🔗 <a href="${productLink}">Shop Now!</a>`, true);
+
+        // SEO Blog
+        if(BLOG_ID) {
+            const blogHTML = await askAI(`Write viral SEO blog "Why ${productTitle} is Trending in 2024". Feature product with image ${imageUrl}. Add yellow buy button: <a href="${productLink}" style="background:#f59e0b;color:#000;padding:15px 30px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:18px;display:inline-block;">Buy Exclusive Design →</a>. HTML only, 400 words.`);
+            if(blogHTML) {
+                const bToken = await getBloggerToken();
+                await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
+                    kind: 'blogger#post', title: `${productTitle} - The Viral Design of 2024`, content: blogHTML, labels: [category, "AI Design", "Trending"]
+                }, { headers: { Authorization: `Bearer ${bToken}` } });
+            }
         }
-        
-        report += `\n📦 Total Added: ${addedProducts.length}`;
-        await sendTelegram(report); 
+
+        if(twitterClient) {
+            try {
+                await twitterClient.v2.tweet(`🎨 Exclusive Design Drop: ${productTitle}!\n🚚 FREE Shipping\n💰 $${productPrice}\n\nGet it 👇\n${productLink}\n\n#AI #Design #Trending`);
+            } catch(e) {}
+        }
 
     } catch(e) {
-        await sendTelegram(`🚨 <b>Pipeline Crashed!</b>\nError: ${e.message}`);
+        await sendTelegram(`🚨 <b>Designer Agent Crashed!</b>\nError: ${e.message}`);
     }
 }
 
-app.get('/', (req, res) => res.send('🏭 Printify Beast V17 is AWAKE!'));
+// ==========================================
+// 🌐 API ROUTES
+// ==========================================
+app.get('/', (req, res) => res.send('🎨 AI Designer Agent is AWAKE!'));
 
 app.get('/run-pipeline', async (req, res) => {
-    res.send("🚀 V17 Triggered! Check Telegram.");
-    runGodModePipeline();
+    res.send("🚀 Designer Agent Triggered! Check Telegram.");
+    runDesignerAgent();
 });
 
 app.post('/api/admin-login', (req, res) => {
@@ -260,9 +258,8 @@ app.post('/api/get-coupon', async (req, res) => {
     res.json({ success: true, coupons: JSON.parse(result || '[]') });
 });
 
-cron.schedule('0 5 * * *', () => runGodModePipeline());
-cron.schedule('0 11 * * *', () => runGodModePipeline());
-cron.schedule('0 17 * * *', () => runGodModePipeline());
+// Runs Daily at 10:30 AM IST
+cron.schedule('30 4 * * *', () => runDesignerAgent());
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🏭 Printify Beast V17 AWAKE on port ${PORT}!`));
+app.listen(PORT, () => console.log(`🎨 AI Designer Agent AWAKE on port ${PORT}!`));
