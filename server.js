@@ -24,7 +24,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 50, message: { success: false, error: 'Too many requests.' } });
-const toolLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 25, message: { success: false, error: 'Tool limit reached. Try later.' } });
+const toolLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 25, message: { success: false, error: 'Tool limit reached.' } });
 app.use('/api/tool/', toolLimiter);
 app.use('/api/agent/', toolLimiter);
 app.use('/api/', limiter);
@@ -113,7 +113,6 @@ async function pingIndexNow(url) {
 function ok(res, data) { res.status(200).json(data); }
 function err(res, msg, code) { res.status(code || 500).json({ success: false, error: msg }); }
 
-// ===== HEALTH =====
 app.get('/', (req, res) => res.send('🤖 PilotStaff API LIVE'));
 app.get('/api/health', (req, res) => ok(res, { success: true, platform: IS_VERCEL ? 'Vercel' : 'Traditional', uptime: process.uptime(), ai: { gemini: !!GEMINI_KEY, groq: !!GROQ_KEY }, blogger: !!(BLOGGER_REFRESH_TOKEN && BLOG_ID) }));
 app.get('/api/public-stats', async (req, res) => {
@@ -121,7 +120,6 @@ app.get('/api/public-stats', async (req, res) => {
     try { const { count } = await supabase.from('users').select('*', { count: 'exact', head: true }); const fmt = n => !n ? '0' : n >= 1000 ? (n / 1000).toFixed(1) + 'K+' : String(n); ok(res, { success: true, activeUsers: fmt(count), totalTasks: fmt((count || 0) * 7) }); } catch (e) { ok(res, { success: true, activeUsers: '2.1K+', totalTasks: '15K+' }); }
 });
 
-// ===== 30 AI TOOLS =====
 const toolRoutes = [
     { path: 'website-builder', prompt: (t) => `Create a COMPLETE single-page website for "${t}". Inline CSS only. Include: sticky navbar with "PilotStaff" logo, hero with gradient and CTA, 6 feature cards in grid, how-it-works 3 steps, 3 testimonials with stars, pricing table 3 plans (Free/$0, Pro/$29, Enterprise/$99) with Pro highlighted, FAQ accordion, footer. Modern, responsive. OUTPUT ONLY HTML.` },
     { path: 'blog-writer-free', prompt: (t) => `Write a 1500+ word SEO blog about "${t}". H1 with keyword. First 155 chars as meta description. 5-6 H2 sections. Short paragraphs. Bullet lists. Include: <a href="${WEBSITE_URL}/tools" style="color:#2563eb;font-weight:600;">free AI tools</a> and <a href="${WEBSITE_URL}/tools/ai-blog-writer" style="color:#2563eb;font-weight:600;">AI blog writer</a>. Conclusion with CTA. OUTPUT ONLY HTML.` },
@@ -143,7 +141,7 @@ const toolRoutes = [
     { path: 'startup-ideas', prompt: (t) => `Generate 5 startup ideas for "${t}". Each: name, problem, market, revenue model, cost, 3 steps. OUTPUT JSON: {"ideas":[{"name":"...","problem":"...","market":"...","revenue":"...","cost":"...","steps":["1.","2.","3."]}]} No markdown.` },
     { path: 'content-repurposer', prompt: (t) => `Repurpose "${t}" into 5 formats: Twitter thread, LinkedIn post, newsletter, Instagram caption, YouTube hook. OUTPUT JSON: {"formats":[{"type":"...","content":"..."}]} No markdown.` },
     { path: 'website-auditor', prompt: (t) => `Audit "${t}" for SEO. Technical, Content, On-page, Off-page. Format: ❌ Issue / ✅ Fix / ⚡ Priority. OUTPUT CLEAN TEXT.` },
-    { path: 'landing-page-copywriter', prompt: (t) => `Write 3 landing page copies for "${t}". HEADLINE / SUBHEADLINE / body / CTA. Variations: urgency, benefit, social proof. OUTPUT JSON: {"copy":["HEADLINE: ...\\nSUBHEADLINE: ...\\n\\n..."]} No markdown.` },
+    { path: 'landing-page-copywriter', prompt: (t) => `Write 3 landing page copies for "${t}". HEADLINE / SUBHEADLINE / body / CTA. OUTPUT JSON: {"copy":["HEADLINE: ...\\nSUBHEADLINE: ...\\n\\n..."]} No markdown.` },
     { path: 'competitor-analyzer', prompt: (t) => `Analyze competitor "${t}". Keyword gaps, content gaps, backlink opportunities, traffic sources, monetization. OUTPUT CLEAN TEXT.` },
     { path: 'schema-generator', prompt: (t) => `Generate 4 JSON-LD schemas for "${t}": BlogPosting, Product, FAQPage, Organization. OUTPUT JSON: {"schemas":[{"@context":"https://schema.org","@type":"BlogPosting",...}]} No markdown.` },
     { path: 'content-calendar', prompt: (t) => `30-day content calendar for "${t}". Each day: day, topic, keyword, type, platform, funnel_stage. OUTPUT JSON: {"calendar":[{"day":1,"topic":"...","keyword":"...","type":"Blog","platform":"Website","funnel_stage":"Awareness"}]} No markdown.` },
@@ -152,7 +150,7 @@ const toolRoutes = [
     { path: 'ai-code-generator', prompt: (t) => `Generate clean, working code for: "${t}". Include code, explanation, usage. OUTPUT JSON: {"code":"...","explanation":"...","usage":"..."} No markdown.` },
     { path: 'youtube-thumbnail-prompt', prompt: (t) => `Generate 5 YouTube thumbnail concepts for "${t}". Each: visual, text overlay, colors, emotion. OUTPUT JSON: {"thumbnails":[{"visual":"...","text":"...","colors":"...","emotion":"..."}]} No markdown.` },
     { path: 'ai-quote-generator', prompt: (t) => `Generate 10 original quotes about "${t}". Each: quote, author, category. OUTPUT JSON: {"quotes":[{"quote":"...","author":"...","category":"..."}]} No markdown.` },
-    { path: 'meeting-notes-generator', prompt: (t) => `Convert meeting notes into structured format: "${t}". Title, date, attendees, decisions, action items with assignee/deadline, next steps, summary. OUTPUT JSON: {"meeting_title":"...","date":"...","attendees":["..."],"key_decisions":["..."],"action_items":[{"task":"...","assignee":"...","deadline":"..."}],"next_steps":["..."],"summary":"..."} No markdown.` },
+    { path: 'meeting-notes-generator', prompt: (t) => `Convert meeting notes: "${t}". Title, date, attendees, decisions, action items with assignee/deadline, next steps, summary. OUTPUT JSON: {"meeting_title":"...","date":"...","attendees":["..."],"key_decisions":["..."],"action_items":[{"task":"...","assignee":"...","deadline":"..."}],"next_steps":["..."],"summary":"..."} No markdown.` },
 ];
 
 toolRoutes.forEach(route => {
@@ -177,7 +175,6 @@ toolRoutes.forEach(route => {
     });
 });
 
-// ===== 6 AI AGENTS =====
 app.post('/api/agent/content-writer', async (req, res) => {
     const { topic, count = 1 } = req.body;
     if (!topic) return err(res, 'Topic required', 400);
@@ -229,11 +226,10 @@ app.post('/api/agent/video-scriptwriter', async (req, res) => {
     ok(res, { success: true, script });
 });
 
-// ===== MISSING ENDPOINTS (Frontend inko call karta hai) =====
 app.post('/api/ai-chat', async (req, res) => {
     const { message } = req.body;
     if (!message) return err(res, 'Message required', 400);
-    const reply = await askAI(`You are a helpful AI assistant for PilotStaff, a platform with 30+ free AI tools and AI employees. User: "${message}". Be concise. Respond in HTML.`);
+    const reply = await askAI(`You are a helpful AI assistant for PilotStaff. User: "${message}". Be concise. Respond in HTML.`);
     if (!reply) return err(res, 'AI failed', 503);
     ok(res, { success: true, reply });
 });
@@ -250,62 +246,66 @@ app.post('/api/paypal-webhook', async (req, res) => {
     ok(res, { success: true, message: 'Payment recorded' });
 });
 
+// ===== SUBSCRIPTION SYSTEM =====
+app.post('/api/subscribe', async (req, res) => {
+    const { email, agentId, planName, price, paypalOrderId } = req.body;
+    if (!email || !agentId) return err(res, 'Missing data', 400);
+    if (supabase) {
+        await supabase.from('subscriptions').update({ active: false }).eq('email', email).eq('agent_id', agentId);
+        await supabase.from('subscriptions').insert({ email, agent_id: agentId, plan_name: planName, price, paypal_order_id: paypalOrderId, active: true });
+    }
+    await sendTelegram(`🤖 <b>New Sub!</b>\n${planName}\n${price}/mo\n${email}`);
+    ok(res, { success: true, message: 'Subscribed!' });
+});
+
+app.get('/api/my-subscriptions', async (req, res) => {
+    const { email } = req.query;
+    if (!email) return err(res, 'Email required', 400);
+    if (!supabase) return ok(res, { success: true, subs: [] });
+    try {
+        const { data } = await supabase.from('subscriptions').select('*').eq('email', email).eq('active', true);
+        ok(res, { success: true, subs: data || [] });
+    } catch (e) { ok(res, { success: true, subs: [] }); }
+});
+
+app.post('/api/subscribe-all', async (req, res) => {
+    const { email, planName, price, paypalOrderId } = req.body;
+    if (!email) return err(res, 'Email required', 400);
+    const ALL = [
+        { id: 'receptionist', name: 'AI Receptionist', p: '$19' },
+        { id: 'sales-agent', name: 'AI Sales Agent', p: '$29' },
+        { id: 'support-agent', name: 'AI Support Agent', p: '$29' },
+        { id: 'social-staff', name: 'AI Social Staff', p: '$29' },
+        { id: 'content-writer', name: 'AI Content Writer', p: '$19' },
+        { id: 'seo-expert', name: 'AI SEO Expert', p: '$39' },
+        { id: 'social-manager', name: 'AI Social Manager', p: '$29' },
+        { id: 'email-marketer', name: 'AI Email Marketer', p: '$29' },
+        { id: 'video-scriptwriter', name: 'AI Video Scriptwriter', p: '$19' },
+    ];
+    if (supabase) {
+        for (const a of ALL) {
+            await supabase.from('subscriptions').update({ active: false }).eq('email', email).eq('agent_id', a.id);
+            await supabase.from('subscriptions').insert({ email, agent_id: a.id, plan_name: a.name, price: a.p, paypal_order_id: paypalOrderId, active: true });
+        }
+    }
+    await sendTelegram(`💰 <b>${planName}!</b>\n${price}/mo\n${email}\nAll 9 unlocked`);
+    ok(res, { success: true, message: `Subscribed to ${planName}` });
+});
+
 // ===== BLOG SYSTEM =====
 const TRENDING_TOPICS = [
-    'How AI Tools Are Replacing $5000/Month Employees in 2025',
-    '15 Free AI Websites That Do Everything Paid Software Does',
-    'AI Website Builder vs Hiring a Developer: Complete Cost Breakdown',
-    'How Small Businesses Use AI Agents to Compete with Big Companies',
-    'Free AI Blog Writer That Actually Produces Rankable Content',
-    'Best AI Logo Makers in 2025: We Tested 10 Free Tools',
-    'How to Write Meta Tags That Get Clicks on Google Search',
-    'AI Content vs Human Content: What Google Algorithms Actually Prefer',
-    '10 AI Tools Every Freelancer Needs to Double Their Income',
-    'How to Start an AI Automation Business with Zero Investment',
-    'Free AI Image Generators That Produce Professional Results in 2025',
-    'How to Write an ATS-Friendly Resume Using Free AI Tools',
-    'AI Social Media Manager: How to Post Daily Without Doing Anything',
-    'The Complete Beginner Guide to AI SEO Tools',
-    'How to Create a Business Name That People Actually Remember',
-    'Free Invoice Generator: Create Professional Invoices in 30 Seconds',
-    'AI Email Writer: How to Write Emails That Get Replies Every Time',
-    'How to Build a 30-Day Content Calendar Using AI in 15 Minutes',
-    'YouTube SEO in 2025: Free AI Tools That Boost Your Views',
-    'Why Every Single Website Needs a Privacy Policy in 2025',
-    'AI Ad Copy Generators: Do They Actually Convert Better Than Humans',
-    'How to Repurpose One Piece of Content Into 5 Different Formats',
-    'Free Schema Markup Generator: The Easiest Way to Boost Google Rankings',
-    'Startup Ideas 2025: 10 AI Business Opportunities Under $1000',
-    'How to Do Competitor Analysis Using Free AI Tools',
-    'Landing Page Copy That Converts: AI Formulas Used by Top Brands',
-    'Instagram and TikTok Hashtag Strategy That Actually Goes Viral in 2025',
-    'AI Resume Builder vs Traditional Resume Services',
-    'How to Write Product Descriptions That Sell Using Free AI Tools',
-    'How to Respond to Every Type of Customer Review Using AI',
+    'How AI Tools Are Replacing $5000/Month Employees in 2025', '15 Free AI Websites That Do Everything Paid Software Does', 'AI Website Builder vs Hiring a Developer: Complete Cost Breakdown', 'How Small Businesses Use AI Agents to Compete with Big Companies', 'Free AI Blog Writer That Actually Produces Rankable Content', 'Best AI Logo Makers in 2025: We Tested 10 Free Tools', 'How to Write Meta Tags That Get Clicks on Google Search', 'AI Content vs Human Content: What Google Algorithms Actually Prefer', '10 AI Tools Every Freelancer Needs to Double Their Income', 'How to Start an AI Automation Business with Zero Investment', 'Free AI Image Generators That Produce Professional Results in 2025', 'How to Write an ATS-Friendly Resume Using Free AI Tools', 'AI Social Media Manager: How to Post Daily Without Doing Anything', 'The Complete Beginner Guide to AI SEO Tools', 'How to Create a Business Name That People Actually Remember', 'Free Invoice Generator: Create Professional Invoices in 30 Seconds', 'AI Email Writer: How to Write Emails That Get Replies Every Time', 'How to Build a 30-Day Content Calendar Using AI in 15 Minutes', 'YouTube SEO in 2025: Free AI Tools That Boost Your Views', 'Why Every Single Website Needs a Privacy Policy in 2025', 'AI Ad Copy Generators: Do They Actually Convert Better Than Humans', 'How to Repurpose One Piece of Content Into 5 Different Formats', 'Free Schema Markup Generator: The Easiest Way to Boost Google Rankings', 'Startup Ideas 2025: 10 AI Business Opportunities Under $1000', 'How to Do Competitor Analysis Using Free AI Tools', 'Landing Page Copy That Converts: AI Formulas Used by Top Brands', 'Instagram and TikTok Hashtag Strategy That Actually Goes Viral in 2025', 'AI Resume Builder vs Traditional Resume Services: Which Gets More Interviews', 'How to Write Product Descriptions That Sell Using Free AI Tools', 'How to Respond to Every Type of Customer Review Using AI',
 ];
 
 async function publishSEOBlog(topic) {
     const ct = sanitizeInput(topic);
-    const html = await askAI(`Write a HIGH-QUALITY 1500+ word SEO blog post.
-TOPIC: "${ct}"
-DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-STRUCTURE: H1 with keyword, first 155 chars as meta description, 5-6 H2 sections, short paragraphs, bullet lists.
-LINKS (include naturally):
-1. <a href="${WEBSITE_URL}" style="color:#2563eb;font-weight:600;">PilotStaff</a>
-2. <a href="${WEBSITE_URL}/tools" style="color:#2563eb;font-weight:600;">25 free AI tools</a>
-3. <a href="${WEBSITE_URL}/agents" style="color:#2563eb;font-weight:600;">AI employees</a>
-4. <a href="${WEBSITE_URL}/pricing" style="color:#2563eb;font-weight:600;">affordable plans starting at $19/month</a>
-CONCLUSION: Summarize key takeaways. End with: "Check out <a href="${WEBSITE_URL}" style="color:#2563eb;font-weight:600;">PilotStaff.com</a> to explore their free AI tools."
-OUTPUT ONLY HTML starting with <h1>. No html/body/head. No markdown.`);
+    const html = await askAI(`Write a HIGH-QUALITY 1500+ word SEO blog post. TOPIC: "${ct}" DATE: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}. STRUCTURE: H1 with keyword, 5-6 H2 sections, short paragraphs, bullet lists. LINKS: <a href="${WEBSITE_URL}" style="color:#2563eb;font-weight:600;">PilotStaff</a>, <a href="${WEBSITE_URL}/tools" style="color:#2563eb;font-weight:600;">25 free AI tools</a>, <a href="${WEBSITE_URL}/agents" style="color:#2563eb;font-weight:600;">AI employees</a>, <a href="${WEBSITE_URL}/pricing" style="color:#2563eb;font-weight:600;">affordable plans</a>. CONCLUSION: Check out <a href="${WEBSITE_URL}" style="color:#2563eb;font-weight:600;">PilotStaff.com</a>. OUTPUT ONLY HTML. No markdown.`);
     if (!html) throw new Error('AI failed');
     const titleMatch = html.match(/<h1[^>]*>(.*?)<\/h1>/i);
     const postTitle = titleMatch ? titleMatch[1].replace(/<[^>]*>/g, '').substring(0, 100) : ct;
     const token = await getBloggerToken();
     if (!token) throw new Error('Blogger auth failed');
-    await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, {
-        kind: 'blogger#post', title: postTitle, content: html,
-        labels: [ct.split(' ').slice(0, 2).join(' '), 'AI Tools', 'Free Tools', '2025', 'Guide', 'PilotStaff'],
-    }, { headers: { Authorization: `Bearer ${token}` }, timeout: 30000 });
+    await axios.post(`https://www.googleapis.com/blogger/v3/blogs/${BLOG_ID}/posts/`, { kind: 'blogger#post', title: postTitle, content: html, labels: [ct.split(' ').slice(0, 2).join(' '), 'AI Tools', 'Free Tools', '2025', 'PilotStaff'] }, { headers: { Authorization: `Bearer ${token}` }, timeout: 30000 });
     const blogUrl = `https://${BLOG_ID}.blogspot.com`;
     pingIndexNow(blogUrl);
     await sendTelegram(`📝 <b>Blog Published!</b>\n📐 ${postTitle.substring(0, 70)}\n🔗 ${blogUrl}`);
@@ -345,7 +345,6 @@ app.get('/api/get-old-posts', async (req, res) => {
     } catch (e) { err(res, e.message, 500); }
 });
 
-// ===== CRON (sirf traditional server pe) =====
 if (!IS_VERCEL) {
     const cron = require('node-cron');
     let lastAutoBlog = '';
@@ -362,7 +361,6 @@ if (!IS_VERCEL) {
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => { console.error('Error:', err.message); res.status(500).json({ error: 'Internal error' }); });
 
-// ===== VERCEL EXPORT ya TRADITIONAL LISTEN =====
 if (IS_VERCEL) {
     module.exports = app;
 } else {
