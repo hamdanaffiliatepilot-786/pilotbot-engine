@@ -1,0 +1,35 @@
+name: Run PilotStaff Automation
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger backend automation endpoint
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          node -e "
+          fetch(process.env.BACKEND_URL + '/api/internal/run-automation', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-cron-secret': process.env.CRON_SECRET
+            },
+            body: JSON.stringify({})
+          })
+          .then(async (res) => {
+            const text = await res.text();
+            console.log(text);
+            if (!res.ok) process.exit(1);
+          })
+          .catch((err) => {
+            console.error(err);
+            process.exit(1);
+          });
+          "
