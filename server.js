@@ -7,15 +7,35 @@ const rateLimit = require('express-rate-limit');
 
 const app = express();
 
-const ALLOWED_ORIGINS = [
-    process.env.FRONTEND_URL || 'https://pilotstaff.com',
+function env(key) {
+    let val = process.env[key];
+    if (!val) return '';
+    return val.replace(/^['"`\s]+|['"`\s]+$/g, '').trim();
+}
+
+function normalizeOrigin(url) {
+    return (url || '').trim().replace(/\/+$/, '');
+}
+
+const configuredOrigins = [
+    env('FRONTEND_URL'),
+    ...env('FRONTEND_URLS').split(',').map(normalizeOrigin).filter(Boolean),
     'http://localhost:3000'
-];
+].map(normalizeOrigin).filter(Boolean);
+
+const allowVercelPreviews = env('ALLOW_VERCEL_PREVIEWS') === 'true';
 
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) callback(null, true);
-        else callback(new Error('Not allowed'));
+        if (!origin) return callback(null, true);
+
+        const normalizedOrigin = normalizeOrigin(origin);
+        const isAllowed =
+            configuredOrigins.includes(normalizedOrigin) ||
+            (allowVercelPreviews && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(normalizedOrigin));
+
+        if (isAllowed) return callback(null, true);
+        return callback(new Error('Not allowed'));
     },
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -28,12 +48,6 @@ const toolLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 25, message: { su
 app.use('/api/tool/', toolLimiter);
 app.use('/api/agent/', toolLimiter);
 app.use('/api/', limiter);
-
-function env(key) {
-    let val = process.env[key];
-    if (!val) return '';
-    return val.replace(/^['"`\s]+|['"`\s]+$/g, '').trim();
-}
 
 const SB_URL = env('SB_URL');
 const SB_KEY = env('SB_KEY');
@@ -51,13 +65,27 @@ const supabase = SB_URL && SB_KEY ? createClient(SB_URL, SB_KEY) : null;
 
 function sanitizeInput(input) {
     if (typeof input !== 'string') return input;
-    return input.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/on\w+\s*=\s*["']?[^"']*["']?/gi, '').replace(/javascript\s*:/gi, '').trim().substring(0, 5000);
+    return input
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/on\w+\s*=\s*["']?[^"']*["']?/gi, '')
+        .replace(/javascript\s*:/gi, '')
+        .trim()
+        .substring(0, 5000);
 }
 
 async function sendTelegram(message) {
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
     try {
-        await axios.post(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, { chat_id: TELEGRAM_CHAT_ID, text: message, parse_mode: 'HTML', disable_web_page_preview: true }, { timeout: 10000 });
+        await axios.post(
+            `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+            {
+                chat_id: TELEGRAM_CHAT_ID,
+                text: message,
+                parse_mode: 'HTML',
+                disable_web_page_preview: true
+            },
+            { timeout: 10000 }
+        );
     } catch (e) {}
 }
 
@@ -66,20 +94,42 @@ const AI_TIMEOUT = IS_VERCEL ? 25000 : 60000;
 async function askAI(prompt, retries = 2) {
     if (GEMINI_KEY) {
         try {
-            const r = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`, {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { temperature: 0.7, maxOutputTokens: IS_VERCEL ? 2000 : 4000 }
-            }, { timeout: AI_TIMEOUT });
+            const r = await axios.post(
+                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+                {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.7, maxOutputTokens: IS_VERCEL ? 2000 : 4000 }
+                },
+                { timeout: AI_TIMEOUT }
+            );
             let c = r.data.candidates?.[0]?.content?.parts?.[0]?.text;
             if (c) return c.replace(/```json\n?/g, '').replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
-        } catch (e) { console.log('Gemini fail:', e.message?.substring(0, 80)); }
+        } catch (e) {
+            console.log('Gemini fail:', e.message?.substring(0, 80));
+        }
     }
+
     if (!GROQ_KEY) return null;
+
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-            const r = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-                model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.7, max_tokens: IS_VERCEL ? 2000 : 4000,
-            }, { headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' }, timeout: AI_TIMEOUT });
+            const r = await axios.post(
+                'https://api.groq.com/openai/v1/chat/completions',
+                {
+                    model: 'llama-3.3-70b-versatile',
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.7,
+                    max_tokens: IS_VERCEL ? 2000 : 4000,
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${GROQ_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: AI_TIMEOUT
+                }
+            );
+
             let c = r.data.choices[0].message.content;
             return c.replace(/```json\n?/g, '').replace(/```html\n?/g, '').replace(/```\n?/g, '').trim();
         } catch (e) {
@@ -87,14 +137,25 @@ async function askAI(prompt, retries = 2) {
             await new Promise(r => setTimeout(r, 1000));
         }
     }
+
     return null;
 }
 
-function ok(res, data) { res.status(200).json(data); }
-function err(res, msg, code) { res.status(code || 500).json({ success: false, error: msg }); }
+function ok(res, data) {
+    res.status(200).json(data);
+}
+
+function err(res, msg, code) {
+    res.status(code || 500).json({ success: false, error: msg });
+}
 
 app.get('/', (req, res) => res.send('🤖 PilotStaff API LIVE'));
-app.get('/api/health', (req, res) => ok(res, { success: true, platform: IS_VERCEL ? 'Vercel' : 'Traditional', uptime: process.uptime(), ai: { gemini: !!GEMINI_KEY, groq: !!GROQ_KEY } }));
+app.get('/api/health', (req, res) => ok(res, {
+    success: true,
+    platform: IS_VERCEL ? 'Vercel' : 'Traditional',
+    uptime: process.uptime(),
+    ai: { gemini: !!GEMINI_KEY, groq: !!GROQ_KEY }
+}));
 
 // ===== TOOL ROUTES =====
 const toolRoutes = [
@@ -144,21 +205,40 @@ toolRoutes.forEach(route => {
     app.post(`/api/tool/${route.path}`, async (req, res) => {
         const input = sanitizeInput(req.body.topic || req.body.prompt);
         if (!input) return err(res, 'Prompt required', 400);
+
         if (route.type === 'image') {
             const seed = Math.floor(Math.random() * 999999);
-            return ok(res, { success: true, imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(input)}?width=1024&height=1024&nologo=true&seed=${seed}` });
+            return ok(res, {
+                success: true,
+                imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(input)}?width=1024&height=1024&nologo=true&seed=${seed}`
+            });
         }
+
         if (route.type === 'logo') {
             const seed = Math.floor(Math.random() * 999999);
-            const prompts = [`minimal flat logo "${input}" white bg`, `gradient badge logo "${input}"`, `luxury monogram "${input}"`, `icon+text logo "${input}" modern`];
-            return ok(res, { success: true, imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompts[Math.floor(Math.random() * prompts.length)])}?width=1024&height=1024&nologo=true&seed=${seed}` });
+            const prompts = [
+                `minimal flat logo "${input}" white bg`,
+                `gradient badge logo "${input}"`,
+                `luxury monogram "${input}"`,
+                `icon+text logo "${input}" modern`
+            ];
+            return ok(res, {
+                success: true,
+                imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(prompts[Math.floor(Math.random() * prompts.length)])}?width=1024&height=1024&nologo=true&seed=${seed}`
+            });
         }
+
         const result = await askAI(route.prompt(input));
         if (!result) return err(res, 'AI generation failed. Try again.', 503);
+
         try {
-            if (result.trim().startsWith('{') || result.trim().startsWith('[')) return ok(res, { success: true, data: JSON.parse(result) });
+            if (result.trim().startsWith('{') || result.trim().startsWith('[')) {
+                return ok(res, { success: true, data: JSON.parse(result) });
+            }
             return ok(res, { success: true, article: result });
-        } catch (e) { return ok(res, { success: true, text: result }); }
+        } catch (e) {
+            return ok(res, { success: true, text: result });
+        }
     });
 });
 
@@ -166,6 +246,7 @@ toolRoutes.forEach(route => {
 app.post('/api/agent/receptionist', async (req, res) => {
     const { question, customerName, businessType } = req.body;
     if (!question) return err(res, 'Question required', 400);
+
     const answer = await askAI(`You are Sarah, a friendly receptionist at ${businessType || 'our company'}. 
 Customer ${customerName || 'says'}: "${question}"
 RESPONSIBILITIES:
@@ -177,6 +258,7 @@ RESPONSIBILITIES:
 - Handle objections gracefully
 - NEVER say you are AI
 Respond in HTML format. Keep under 150 words. Be warm and professional.`);
+
     if (!answer) return err(res, 'AI failed', 503);
     ok(res, { success: true, answer });
 });
@@ -184,6 +266,7 @@ Respond in HTML format. Keep under 150 words. Be warm and professional.`);
 app.post('/api/agent/sales-agent', async (req, res) => {
     const { question, product, price } = req.body;
     if (!question) return err(res, 'Question required', 400);
+
     const answer = await askAI(`You are Alex, an experienced sales agent selling: ${product || 'AI services'} at ${price || '$29/month'}.
 Prospect says: "${question}"
 SALES PROCESS:
@@ -195,6 +278,7 @@ SALES PROCESS:
 6. NEVER be pushy, be consultative
 7. NEVER say you are AI
 Use persuasive language. Include ROI calculations. Respond in HTML. Under 200 words.`);
+
     if (!answer) return err(res, 'AI failed', 503);
     ok(res, { success: true, answer });
 });
@@ -202,6 +286,7 @@ Use persuasive language. Include ROI calculations. Respond in HTML. Under 200 wo
 app.post('/api/agent/support-agent', async (req, res) => {
     const { question, orderNumber, issueType } = req.body;
     if (!question) return err(res, 'Question required', 400);
+
     const answer = await askAI(`You are Mike, a patient customer support agent.
 Issue type: ${issueType || 'general'}
 Order: ${orderNumber || 'N/A'}
@@ -215,6 +300,7 @@ SUPPORT APPROACH:
 6. Escalate if beyond your scope
 7. NEVER say you are AI
 Be empathetic, patient, thorough. Respond in HTML. Under 200 words.`);
+
     if (!answer) return err(res, 'AI failed', 503);
     ok(res, { success: true, answer });
 });
@@ -222,6 +308,7 @@ Be empathetic, patient, thorough. Respond in HTML. Under 200 words.`);
 app.post('/api/agent/social-staff', async (req, res) => {
     const { niche, days = 7, platforms } = req.body;
     if (!niche) return err(res, 'Niche required', 400);
+
     const content = await askAI(`Create ${days} days of social media content for "${niche}".
 Platforms: ${platforms || 'Instagram, Twitter, LinkedIn'}
 For EACH day, create posts for each platform:
@@ -231,13 +318,20 @@ For EACH day, create posts for each platform:
 - Best posting time
 - Content type (carousel, reel, story, post)
 OUTPUT JSON: {"days":[{"day":1,"posts":[{"platform":"instagram","hook":"...","content":"...","hashtags":["#..."],"time":"9:00 AM","type":"carousel"}]}]} No markdown.`);
+
     if (!content) return err(res, 'AI failed', 503);
-    try { ok(res, { success: true, data: JSON.parse(content) }); } catch (e) { ok(res, { success: true, text: content }); }
+
+    try {
+        ok(res, { success: true, data: JSON.parse(content) });
+    } catch (e) {
+        ok(res, { success: true, text: content });
+    }
 });
 
 app.post('/api/agent/content-writer', async (req, res) => {
     const { topic, wordCount = 1500, tone = 'professional' } = req.body;
     if (!topic) return err(res, 'Topic required', 400);
+
     const html = await askAI(`Write a ${wordCount}+ word ${tone} SEO blog about: "${topic}".
 Requirements:
 - Compelling H1 with primary keyword
@@ -248,14 +342,24 @@ Requirements:
 - Internal link: <a href="${WEBSITE_URL}/tools" style="color:#2563eb;font-weight:600;">free AI tools</a>
 - Conclusion with CTA
 - OUTPUT ONLY HTML, no markdown`);
+
     if (!html) return err(res, 'AI failed', 503);
+
     const tm = html.match(/<h1[^>]*>(.*?)<\/h1>/i);
-    ok(res, { success: true, articles: [{ title: tm ? tm[1].replace(/<[^>]*>/g, '') : topic, content: html, words: html.split(/\s+/).length }] });
+    ok(res, {
+        success: true,
+        articles: [{
+            title: tm ? tm[1].replace(/<[^>]*>/g, '') : topic,
+            content: html,
+            words: html.split(/\s+/).length
+        }]
+    });
 });
 
 app.post('/api/agent/seo-expert', async (req, res) => {
     const { url, niche, goal = 'rank higher' } = req.body;
     if (!url && !niche) return err(res, 'URL or niche required', 400);
+
     const audit = await askAI(`You are Dr. SEO, an expert with 15 years experience.
 Goal: ${goal}
 Target: "${url || niche}"
@@ -267,6 +371,7 @@ Provide COMPLETE SEO analysis:
 5. BACKLINK STRATEGY (5 specific tactics)
 6. 30-DAY ACTION PLAN (week by week)
 Format clearly with emojis for sections. OUTPUT CLEAN TEXT.`);
+
     if (!audit) return err(res, 'AI failed', 503);
     ok(res, { success: true, audit });
 });
@@ -274,6 +379,7 @@ Format clearly with emojis for sections. OUTPUT CLEAN TEXT.`);
 app.post('/api/agent/email-marketer', async (req, res) => {
     const { product, audience, goal = 'convert to customer' } = req.body;
     if (!product) return err(res, 'Product required', 400);
+
     const funnel = await askAI(`Create a 6-email conversion funnel for "${product}".
 Target audience: ${audience || 'potential customers'}
 Goal: ${goal}
@@ -286,13 +392,20 @@ EMAIL SEQUENCE:
 6. Last Chance (Day 10) - Final push
 Each email needs: type, day, subject (under 50 chars), preview text, body (150-200 words), P.S. line
 OUTPUT JSON: {"funnel":[{"day":0,"type":"welcome","subject":"...","preview":"...","body":"...","ps":"..."}]} No markdown.`);
+
     if (!funnel) return err(res, 'AI failed', 503);
-    try { ok(res, { success: true, data: JSON.parse(funnel) }); } catch (e) { ok(res, { success: true, text: funnel }); }
+
+    try {
+        ok(res, { success: true, data: JSON.parse(funnel) });
+    } catch (e) {
+        ok(res, { success: true, text: funnel });
+    }
 });
 
 app.post('/api/agent/video-scriptwriter', async (req, res) => {
     const { topic, platform = 'youtube', duration = '10 min', tone = 'engaging' } = req.body;
     if (!topic) return err(res, 'Topic required', 400);
+
     const script = await askAI(`Write a ${duration} ${tone} ${platform} script about "${topic}".
 INCLUDE THESE ELEMENTS:
 [HOOK:] - First 5 seconds to grab attention
@@ -305,6 +418,7 @@ INCLUDE THESE ELEMENTS:
 [OUTRO:] - Summary + next video teaser
 Make it conversational, not robotic. Include estimated timestamps.
 OUTPUT CLEAN TEXT.`);
+
     if (!script) return err(res, 'AI failed', 503);
     ok(res, { success: true, script });
 });
@@ -313,6 +427,7 @@ OUTPUT CLEAN TEXT.`);
 app.post('/api/capture-email', async (req, res) => {
     const { email, source = 'unknown' } = req.body;
     if (!email || !email.includes('@')) return err(res, 'Invalid email', 400);
+
     if (supabase) {
         try {
             await supabase.from('email_captures').upsert(
@@ -321,6 +436,7 @@ app.post('/api/capture-email', async (req, res) => {
             );
         } catch (e) {}
     }
+
     await sendTelegram(`📧 <b>New Lead!</b>\n${email}\nSource: ${source}`);
     ok(res, { success: true, message: 'Subscribed!' });
 });
@@ -329,10 +445,23 @@ app.post('/api/capture-email', async (req, res) => {
 app.post('/api/subscribe', async (req, res) => {
     const { email, agentId, planName, price, paypalOrderId } = req.body;
     if (!email || !agentId) return err(res, 'Missing data', 400);
+
     if (supabase) {
-        await supabase.from('subscriptions').update({ active: false }).eq('email', email).eq('agent_id', agentId);
-        await supabase from('subscriptions').insert({ email, agent_id: agentId, plan_name: planName, price, paypal_order_id: paypalOrderId, active: true });
+        try {
+            await supabase.from('subscriptions').update({ active: false }).eq('email', email).eq('agent_id', agentId);
+            await supabase.from('subscriptions').insert({
+                email,
+                agent_id: agentId,
+                plan_name: planName,
+                price,
+                paypal_order_id: paypalOrderId,
+                active: true
+            });
+        } catch (e) {
+            return err(res, 'Subscription save failed', 500);
+        }
     }
+
     await sendTelegram(`🤖 <b>New Sub!</b>\n${planName}\n${price}/mo\n${email}`);
     ok(res, { success: true, message: 'Subscribed!' });
 });
@@ -340,11 +469,16 @@ app.post('/api/subscribe', async (req, res) => {
 app.post('/api/subscribe-tools', async (req, res) => {
     const { email, planName, price, paypalOrderId } = req.body;
     if (!email) return err(res, 'Email required', 400);
+
     if (supabase) {
         try {
-            await supabase.from('tool_subscriptions').upsert({ email, plan_name: planName, price, paypal_order_id: paypalOrderId, active: true }, { onConflict: 'email' });
+            await supabase.from('tool_subscriptions').upsert(
+                { email, plan_name: planName, price, paypal_order_id: paypalOrderId, active: true },
+                { onConflict: 'email' }
+            );
         } catch (e) {}
     }
+
     await sendTelegram(`💰 <b>Tools Sub!</b>\n${planName}\n${price}/mo\n${email}`);
     ok(res, { success: true, message: 'Subscribed!' });
 });
@@ -353,11 +487,14 @@ app.get('/api/my-subscriptions', async (req, res) => {
     const { email } = req.query;
     if (!email) return err(res, 'Email required', 400);
     if (!supabase) return ok(res, { success: true, subs: [], toolsPlan: null });
+
     try {
         const { data: staffSubs } = await supabase.from('subscriptions').select('*').eq('email', email).eq('active', true);
         const { data: toolSub } = await supabase.from('tool_subscriptions').select('*').eq('email', email).eq('active', true).single();
         ok(res, { success: true, subs: staffSubs || [], toolsPlan: toolSub });
-    } catch (e) { ok(res, { success: true, subs: [], toolsPlan: null }); }
+    } catch (e) {
+        ok(res, { success: true, subs: [], toolsPlan: null });
+    }
 });
 
 app.post('/api/paypal-webhook', async (req, res) => {
@@ -369,7 +506,10 @@ app.post('/api/paypal-webhook', async (req, res) => {
 
 // ===== ERROR HANDLING =====
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
-app.use((err, req, res, next) => { console.error('Error:', err.message); res.status(500).json({ error: 'Internal error' }); });
+app.use((err, req, res, next) => {
+    console.error('Error:', err.message);
+    res.status(500).json({ error: 'Internal error' });
+});
 
 if (IS_VERCEL) {
     module.exports = app;
