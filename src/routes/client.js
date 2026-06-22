@@ -1,105 +1,102 @@
 const { Router } = require('express');
-const { authenticate } = require('../middleware/auth');
+const { dashboardAuth, optionalAuth } = require('../middleware/auth');
 const { requireDB } = require('../config/database');
 const { sendTelegram } = require('../services/telegram.service');
 const { sanitizeText } = require('../utils/sanitize');
-const { validate } = require('../middleware/validator');
-const { toIso, ok, err } = require('../utils/helpers');
+const { ok, err } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 const router = Router();
 
-router.use(authenticate);
-
-// ─── Get client setup ───
-router.get('/setup', async (req, res) => {
+// Get subscriptions - works with JWT or email param
+router.get('/my-subscriptions', dashboardAuth, async (req, res) => {
     if (!requireDB(res)) return;
-
     try {
-        const { data, error } = await req.app.locals.supabase
-            .from('client_setups')
-            .select('*')
-            .eq('email', req.user.email)
-            .single();
+        const { data: staffSubs } = await req.app.locals.supabase
+            .from('subscriptions').select('*')
+            .eq('email', req.user.email).eq('active', true);
 
-        if (error && error.code !== 'PGRST116') {
-            logger.error('Setup fetch error:', error.message);
-            return err(res, 'Failed to fetch setup', 500);
-        }
+        const { data: toolSub } = await req.app.locals.supabase
+            .from('tool_subscriptions').select('*')
+            .eq('email', req.user.email).eq('active', true).single();
 
-        ok(res, { success: true, setup: data || null });
+        ok(res, { success: true, subs: staffSubs || [], toolsPlan: toolSub });
     } catch (e) {
-        logger.error('Setup fetch exception:', e.message);
-        err(res, 'Failed to fetch setup', 500);
+        logger.error('Subs fetch error:', e.message);
+        ok(res, { success: true, subs: [], toolsPlan: null });
     }
 });
 
-// ─── Save client setup ───
-router.post('/setup', async (req, res) => {
+// Subscribe to AI Staff - works with email from body (PayPal callback)
+router.post('/subscribe', async (req, res) => {
     if (!requireDB(res)) return;
 
-    const payload = {
-        businessName: req.body.businessName,
-        businessType: req.body.businessType,
-        websiteUrl: req.body.websiteUrl,
-        targetAudience: req.body.targetAudience,
-        goals: req.body.goals,
-        brandTone: req.body.brandTone,
-        services: req.body.services,
-        offers: req.body.offers,
-        channels: req.body.channels,
-        faq: req.body.faq
-    };
+    const email = sanitizeText(req.body.email || '', 200);
+    const agentId = sanitizeText(req.body.agentId || '', 100);
+    const planName = sanitizeText(req.body.planName || '', 100);
+    const price = sanitizeText(req.body.price || '', 50);
+    const paypalOrderId = sanitizeText(req.body.paypalOrderId || '', 200);
 
-    const validationErrors = validate(payload, {
-        businessName: { required: true, type: 'string', max: 200 },
-        businessType: { required: false, type: 'string', max: 120 },
-        websiteUrl: { required: false, type: 'string', max: 300, pattern: /^https?:\/\/.+/ },
-        targetAudience: { required: false, type: 'string', max: 500 },
-        goals: { required: false, type: 'string', max: 1000 },
-        brandTone: { required: false, type: 'string', max: 300 },
-        services: { required: false, type: 'string', max: 2000 },
-        offers: { required: false, type: 'string', max: 1000 },
-        channels: { required: false, type: 'string', max: 500 },
-        faq: { required: false, type: 'string', max: 3000 }
-    });
-
-    if (validationErrors.length > 0) {
-        return err(res, `Validation: ${validationErrors[0].message}`, 400);
-    }
-
-    const dbPayload = {
-        email: req.user.email,
-        business_name: sanitizeText(payload.businessName, 200),
-        business_type: sanitizeText(payload.businessType, 120),
-        website_url: sanitizeText(payload.websiteUrl, 300),
-        target_audience: sanitizeText(payload.targetAudience, 500),
-        goals: sanitizeText(payload.goals, 1000),
-        brand_tone: sanitizeText(payload.brandTone, 300),
-        services: sanitizeText(payload.services, 2000),
-        offers: sanitizeText(payload.offers, 1000),
-        channels: sanitizeText(payload.channels, 500),
-        faq: sanitizeText(payload.faq, 3000),
-        updated_at: toIso(new Date())
-    };
+    if (!email || !agentId) return err(res, 'Email and Agent ID required', 400);
 
     try {
-        const { error } = await req.app.locals.supabase.from('client_setups').upsert({
-            ...dbPayload,
-            created_at: toIso(new Date())
+        await req.app.locals.supabase.from('subscriptions')
+            .update({ active: false })
+            .eq('email', email).eq('agent_id', agentId);
+
+        const { error } = await req.app.locals.supabase.from('subscriptions').insert({
+            email, agent_id: agentId, plan_name: planName, price, paypal_order_id: paypalOrderId, active: true
+        });
+
+        if (error) {
+            logger.error('Subscription save error:', error.message);
+            return err(res, 'Failed to save subscription', 500);
+        }
+
+        await sendTelegram(`🚀 <b>New Sub!</b>\n${planName}\n${price}/mo\n${email}`);
+        logger.info('New subscription:', planName, 'for:', email);
+        ok(res, { success: true, message: 'Subscribed!', email });
+    } catch (e) {
+        logger.error('Subscription exception:', e.message);
+        err(res, 'Failed to save subscription', 500);
+    }
+});
+
+// Subscribe to Tools Plan
+router.post('/subscribe-tools', async (req, res) => {
+    if (!requireDB(res)) return;
+
+    const email = sanitizeText(req.body.email || '', 200);
+    const planName = sanitizeText(req.body.planName || '', 100);
+    const price = sanitizeText(req.body.price || '', 50);
+    const paypalOrderId = sanitizeText(req.body.paypalOrderId || '', 200);
+
+    if (!email) return err(res, 'Email required', 400);
+
+    try {
+        const { error } = await req.app.locals.supabase.from('tool_subscriptions').upsert({
+            email, plan_name: planName, price, paypal_order_id: paypalOrderId, active: true
         }, { onConflict: 'email' });
 
         if (error) {
-            logger.error('Setup save error:', error.message);
-            return err(res, 'Failed to save setup', 500);
+            logger.error('Tool subscription error:', error.message);
+            return err(res, 'Failed to save subscription', 500);
         }
 
-        await sendTelegram(`📋 <b>Client Setup Saved</b>\n${dbPayload.business_name}\n${req.user.email}`);
-        ok(res, { success: true, message: 'Setup saved successfully' });
+        await sendTelegram(`🔧 <b>Tools Sub!</b>\n${planName}\n${price}/mo\n${email}`);
+        ok(res, { success: true, message: 'Subscribed!', email });
     } catch (e) {
-        logger.error('Setup save exception:', e.message);
-        err(res, 'Failed to save setup', 500);
+        logger.error('Tool subscription exception:', e.message);
+        err(res, 'Failed to save subscription', 500);
     }
+});
+
+// PayPal Webhook
+router.post('/paypal-webhook', async (req, res) => {
+    const { orderID, plan, price, payerEmail } = req.body;
+    logger.info('PayPal webhook:', { orderID, plan, price, payerEmail });
+    await sendTelegram(`💰 <b>Payment!</b>\nPlan: ${plan}\nPrice: ${price}\nEmail: ${payerEmail || 'N/A'}`);
+    ok(res, { success: true, message: 'Payment recorded' });
 });
 
 module.exports = router;
