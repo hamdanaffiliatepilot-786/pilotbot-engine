@@ -10,13 +10,12 @@ const router = Router();
 
 router.post('/login', async (req, res) => {
     const email = sanitizeText(req.body.email || '', 200);
+    const refCode = sanitizeText(req.body.refCode || '', 100);
 
     const validationErrors = validate({ email }, {
         email: { required: true, type: 'string', max: 200, email: true }
     });
-    if (validationErrors.length > 0) {
-        return err(res, 'Valid email is required', 400);
-    }
+    if (validationErrors.length > 0) return err(res, 'Valid email is required', 400);
 
     if (supabase) {
         try {
@@ -29,20 +28,25 @@ router.post('/login', async (req, res) => {
             if (!existing) {
                 await supabase.from('email_captures').insert({
                     email,
-                    source: 'auth_login',
+                    source: refCode ? `referral:${refCode}` : 'auth_login',
                     captured_at: new Date().toISOString()
                 });
-                logger.info('New user registered:', email);
+                logger.info('New user:', email);
+
+                // Track referral signup
+                if (refCode) {
+                    await supabase.from('referrals')
+                        .update({ total_signups: supabase.raw('total_signups + 1') })
+                        .eq('referral_code', refCode);
+                }
             }
         } catch (e) {
-            logger.warn('Auth login DB error:', e.message?.substring(0, 100));
+            logger.warn('Auth DB error:', e.message?.substring(0, 100));
         }
     }
 
     const token = generateToken(email);
-    if (!token) {
-        return err(res, 'Authentication not configured', 503);
-    }
+    if (!token) return err(res, 'Authentication not configured', 503);
 
     ok(res, { success: true, token, email });
 });
