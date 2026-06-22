@@ -7,7 +7,7 @@ const JWT_SECRET = env('JWT_SECRET');
 
 function generateToken(email) {
     if (!JWT_SECRET) {
-        logger.error('JWT_SECRET not set — cannot generate token');
+        logger.error('JWT_SECRET not set');
         return null;
     }
     return jwt.sign(
@@ -18,14 +18,11 @@ function generateToken(email) {
 }
 
 function authenticate(req, res, next) {
-    if (!JWT_SECRET) {
-        logger.error('JWT_SECRET not configured');
-        return err(res, 'Authentication not configured', 503);
-    }
+    if (!JWT_SECRET) return err(res, 'Authentication not configured', 503);
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return err(res, 'Missing or invalid authorization header', 401);
+        return err(res, 'Missing authorization header', 401);
     }
 
     const token = authHeader.slice(7);
@@ -46,27 +43,36 @@ function authenticate(req, res, next) {
     }
 }
 
-function optionalAuth(req, res, next) {
-    if (!JWT_SECRET) {
-        req.user = null;
+// For dashboard - accepts JWT OR email query param (for PayPal redirect)
+function dashboardAuth(req, res, next) {
+    const authHeader = req.headers.authorization;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        return authenticate(req, res, next);
+    }
+
+    const email = req.query.email || req.body?.email;
+    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        req.user = { email: email.trim().toLowerCase() };
         return next();
     }
 
+    return err(res, 'Authentication required. Please login.', 401);
+}
+
+function optionalAuth(req, res, next) {
+    if (!JWT_SECRET) { req.user = null; return next(); }
+
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        req.user = null;
-        return next();
-    }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) { req.user = null; return next(); }
     const token = authHeader.slice(7);
     if (!token) { req.user = null; return next(); }
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
         req.user = decoded.sub ? { email: decoded.sub } : null;
-    } catch {
-        req.user = null;
-    }
+    } catch { req.user = null; }
     next();
 }
 
-module.exports = { generateToken, authenticate, optionalAuth };
+module.exports = { generateToken, authenticate, dashboardAuth, optionalAuth };
