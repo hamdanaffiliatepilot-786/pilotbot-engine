@@ -18,25 +18,34 @@ function generateToken(userId, email) {
     }
 
     return jwt.sign(
-        { sub: email, uid: userId, iat: Math.floor(Date.now() / 1000) },
+        {
+            sub: email,
+            uid: userId,
+            iat: Math.floor(Date.now() / 1000),
+        },
         JWT_SECRET,
-        { expiresIn: '7d', algorithm: 'HS256' }
+        {
+            expiresIn: '7d',
+            algorithm: 'HS256',
+        }
     );
 }
 
 function extractUser(token) {
-    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    return jwt.verify(token, JWT_SECRET, {
+        algorithms: ['HS256'],
+    });
 }
 
 function getAuthToken(req, res) {
-    const header = req.headers.authorization;
+    const authHeader = req.headers.authorization;
 
-    if (!header || !header.startsWith('Bearer ')) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
         err(res, 'Missing token', 401);
         return null;
     }
 
-    const token = header.slice(7).trim();
+    const token = authHeader.slice(7).trim();
 
     if (!token) {
         err(res, 'Empty token', 401);
@@ -59,7 +68,7 @@ function handleJwtError(res, error) {
     return err(res, 'Authentication failed', 401);
 }
 
-function errorMessage(error, fallback) {
+function getErrorMessage(error, fallback) {
     const message = String(error?.message || error || '');
 
     if (!message || message.length > 300) {
@@ -69,20 +78,30 @@ function errorMessage(error, fallback) {
     return message;
 }
 
-/*
-|--------------------------------------------------------------------------
-| SIGNUP
-|--------------------------------------------------------------------------
-*/
 router.post('/signup', async (req, res) => {
     const { name, email, password } = req.body || {};
 
     const errors = validate(
         { name, email, password },
         {
-            name: { required: true, type: 'string', min: 2, max: 100 },
-            email: { required: true, type: 'string', max: 200, email: true },
-            password: { required: true, type: 'string', min: 6, max: 100 },
+            name: {
+                required: true,
+                type: 'string',
+                min: 2,
+                max: 100,
+            },
+            email: {
+                required: true,
+                type: 'string',
+                max: 200,
+                email: true,
+            },
+            password: {
+                required: true,
+                type: 'string',
+                min: 6,
+                max: 100,
+            },
         }
     );
 
@@ -106,11 +125,22 @@ router.post('/signup', async (req, res) => {
 
         if (lookupError) {
             logger.error('Signup lookup error:', lookupError.message);
-            return err(res, `Database error: ${errorMessage(lookupError, 'Could not check existing account')}`, 500);
+            return err(
+                res,
+                `Database error: ${getErrorMessage(
+                    lookupError,
+                    'Could not check existing account'
+                )}`,
+                500
+            );
         }
 
         if (existingUser) {
-            return err(res, 'An account with this email already exists. Please login instead.', 409);
+            return err(
+                res,
+                'An account with this email already exists. Please login instead.',
+                409
+            );
         }
 
         const passwordHash = await bcrypt.hash(password, 10);
@@ -121,30 +151,53 @@ router.post('/signup', async (req, res) => {
                 email: cleanEmail,
                 password_hash: passwordHash,
                 name: cleanName,
+                is_pro: false,
+                plan_type: 'free',
             })
-            .select('id, email, name, avatar, created_at')
+            .select(
+                'id, email, name, avatar, is_pro, plan_type, created_at'
+            )
             .single();
 
         if (insertError) {
             logger.error('Signup insert error:', insertError.message);
-            return err(res, `Failed to create account: ${errorMessage(insertError, 'Unknown database error')}`, 500);
+            return err(
+                res,
+                `Failed to create account: ${getErrorMessage(
+                    insertError,
+                    'Unknown database error'
+                )}`,
+                500
+            );
         }
 
         try {
             await supabase
                 .from('email_captures')
                 .upsert(
-                    { email: user.email, source: 'signup' },
-                    { onConflict: 'email' }
+                    {
+                        email: user.email,
+                        source: 'signup',
+                    },
+                    {
+                        onConflict: 'email',
+                    }
                 );
         } catch (captureError) {
-            logger.warn('Email capture skipped:', captureError?.message || captureError);
+            logger.warn(
+                'Email capture skipped:',
+                captureError?.message || captureError
+            );
         }
 
         const token = generateToken(user.id, user.email);
 
         if (!token) {
-            return err(res, 'Auth not configured. Add JWT_SECRET in Render environment variables.', 503);
+            return err(
+                res,
+                'Auth not configured. Add JWT_SECRET in Render environment variables.',
+                503
+            );
         }
 
         logger.info(`New signup: ${user.email}`);
@@ -157,28 +210,42 @@ router.post('/signup', async (req, res) => {
                 email: user.email,
                 name: user.name,
                 avatar: user.avatar || null,
+                is_pro: user.is_pro === true,
+                plan_type: user.plan_type || 'free',
                 created_at: user.created_at || null,
             },
         });
     } catch (error) {
         logger.error('Signup exception:', error?.message || error);
-        return err(res, `Failed to create account: ${errorMessage(error, 'Unexpected server error')}`, 500);
+        return err(
+            res,
+            `Failed to create account: ${getErrorMessage(
+                error,
+                'Unexpected server error'
+            )}`,
+            500
+        );
     }
 });
 
-/*
-|--------------------------------------------------------------------------
-| LOGIN
-|--------------------------------------------------------------------------
-*/
 router.post('/login', async (req, res) => {
     const { email, password } = req.body || {};
 
     const errors = validate(
         { email, password },
         {
-            email: { required: true, type: 'string', max: 200, email: true },
-            password: { required: true, type: 'string', min: 6, max: 100 },
+            email: {
+                required: true,
+                type: 'string',
+                max: 200,
+                email: true,
+            },
+            password: {
+                required: true,
+                type: 'string',
+                min: 6,
+                max: 100,
+            },
         }
     );
 
@@ -195,13 +262,22 @@ router.post('/login', async (req, res) => {
     try {
         const { data: user, error: lookupError } = await supabase
             .from('users')
-            .select('id, email, name, avatar, password_hash, created_at')
+            .select(
+                'id, email, name, avatar, password_hash, is_pro, plan_type, created_at'
+            )
             .eq('email', cleanEmail)
             .maybeSingle();
 
         if (lookupError) {
             logger.error('Login lookup error:', lookupError.message);
-            return err(res, `Database error: ${errorMessage(lookupError, 'Could not find account')}`, 500);
+            return err(
+                res,
+                `Database error: ${getErrorMessage(
+                    lookupError,
+                    'Could not find account'
+                )}`,
+                500
+            );
         }
 
         if (!user) {
@@ -209,10 +285,17 @@ router.post('/login', async (req, res) => {
         }
 
         if (!user.password_hash) {
-            return err(res, 'This account has no password set. Please create a new account.', 400);
+            return err(
+                res,
+                'This account has no password set. Please create a new account.',
+                400
+            );
         }
 
-        const passwordMatches = await bcrypt.compare(password, user.password_hash);
+        const passwordMatches = await bcrypt.compare(
+            password,
+            user.password_hash
+        );
 
         if (!passwordMatches) {
             return err(res, 'Incorrect email or password.', 401);
@@ -221,7 +304,11 @@ router.post('/login', async (req, res) => {
         const token = generateToken(user.id, user.email);
 
         if (!token) {
-            return err(res, 'Auth not configured. Add JWT_SECRET in Render environment variables.', 503);
+            return err(
+                res,
+                'Auth not configured. Add JWT_SECRET in Render environment variables.',
+                503
+            );
         }
 
         return ok(res, {
@@ -232,20 +319,24 @@ router.post('/login', async (req, res) => {
                 email: user.email,
                 name: user.name,
                 avatar: user.avatar || null,
+                is_pro: user.is_pro === true,
+                plan_type: user.plan_type || 'free',
                 created_at: user.created_at || null,
             },
         });
     } catch (error) {
         logger.error('Login exception:', error?.message || error);
-        return err(res, `Login failed: ${errorMessage(error, 'Unexpected server error')}`, 500);
+        return err(
+            res,
+            `Login failed: ${getErrorMessage(
+                error,
+                'Unexpected server error'
+            )}`,
+            500
+        );
     }
 });
 
-/*
-|--------------------------------------------------------------------------
-| CURRENT USER
-|--------------------------------------------------------------------------
-*/
 router.get('/me', async (req, res) => {
     const token = getAuthToken(req, res);
 
@@ -254,7 +345,11 @@ router.get('/me', async (req, res) => {
     }
 
     if (!JWT_SECRET) {
-        return err(res, 'Auth not configured. Add JWT_SECRET in Render environment variables.', 503);
+        return err(
+            res,
+            'Auth not configured. Add JWT_SECRET in Render environment variables.',
+            503
+        );
     }
 
     try {
@@ -270,13 +365,22 @@ router.get('/me', async (req, res) => {
 
         const { data: user, error: lookupError } = await supabase
             .from('users')
-            .select('id, email, name, avatar, created_at')
+            .select(
+                'id, email, name, avatar, is_pro, plan_type, created_at'
+            )
             .eq('id', decoded.uid)
             .maybeSingle();
 
         if (lookupError) {
             logger.error('Current user lookup error:', lookupError.message);
-            return err(res, `Database error: ${errorMessage(lookupError, 'Could not load user')}`, 500);
+            return err(
+                res,
+                `Database error: ${getErrorMessage(
+                    lookupError,
+                    'Could not load user'
+                )}`,
+                500
+            );
         }
 
         if (!user) {
@@ -285,7 +389,15 @@ router.get('/me', async (req, res) => {
 
         return ok(res, {
             success: true,
-            user,
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                avatar: user.avatar || null,
+                is_pro: user.is_pro === true,
+                plan_type: user.plan_type || 'free',
+                created_at: user.created_at || null,
+            },
         });
     } catch (error) {
         return handleJwtError(res, error);
