@@ -15,7 +15,7 @@ function getErrorMessage(error, fallback) {
     return message;
 }
 
-// ─── Get subscriptions — JWT only ───
+// ─── Get subscriptions ───
 
 router.get('/my-subscriptions', authenticate, async (req, res) => {
     if (!requireDB(res)) return;
@@ -38,7 +38,7 @@ router.get('/my-subscriptions', authenticate, async (req, res) => {
     }
 });
 
-// ─── Subscribe to AI Staff — Transaction RPC (atomic) ───
+// ─── Subscribe to AI Staff ───
 
 router.post('/subscribe', authenticate, async (req, res) => {
     if (!requireDB(res)) return;
@@ -61,6 +61,7 @@ router.post('/subscribe', authenticate, async (req, res) => {
 
         if (existingTx) {
             if (existingTx.status === 'COMPLETED') {
+                logger.payment('DUPLICATE_BLOCKED', { email: req.user.email, orderId: paypalOrderId, requestId: req.requestId });
                 return err(res, 'This payment has already been processed.', 409);
             }
             return err(res, 'This order is already being processed.', 409);
@@ -70,7 +71,7 @@ router.post('/subscribe', authenticate, async (req, res) => {
         try {
             order = await verifyOrder(paypalOrderId);
         } catch (verifyError) {
-            logger.error('PayPal verify error:', verifyError.message, 'order:', paypalOrderId);
+            logger.payment('VERIFY_FAILED', { email: req.user.email, agentId, orderId: paypalOrderId, error: verifyError.message, requestId: req.requestId });
             return err(res, 'Payment verification failed. If you were charged, contact support with your order ID.', 500);
         }
 
@@ -89,19 +90,21 @@ router.post('/subscribe', authenticate, async (req, res) => {
         });
 
         if (rpcError) {
-            logger.error('Subscribe RPC error:', rpcError.message, 'order:', paypalOrderId);
+            logger.payment('RPC_FAILED', { email: req.user.email, agentId, orderId: paypalOrderId, error: rpcError.message, requestId: req.requestId });
             return err(res, 'Subscription failed. Contact support with your order ID.', 500);
         }
 
         if (!result || result.success === false) {
-            logger.error('Subscribe TX failed:', result?.error, 'order:', paypalOrderId);
+            logger.payment('TX_FAILED', { email: req.user.email, agentId, orderId: paypalOrderId, reason: result?.error, requestId: req.requestId });
             return err(res, result?.error || 'Subscription failed. Contact support.', 400);
         }
+
+        logger.payment('SUBSCRIPTION_SUCCESS', { userId: req.user.id, email: req.user.email, agentId, plan: result.plan, amount: `${order.currency} ${order.amount}`, orderId: paypalOrderId, captureId: order.captureId, ip: req.ip, requestId: req.requestId });
+        logger.activity(req.user.id, req.user.email, 'SUBSCRIBE', { agentId, amount: order.amount, orderId: paypalOrderId, requestId: req.requestId });
 
         await sendTelegram(
             `🚀 <b>New Sub!</b>\n${result.plan || agentId}\n$${order.amount}/mo\n${req.user.email}\nOrder: ${paypalOrderId}`
         );
-        logger.info('New subscription:', result.plan || agentId, 'for:', req.user.email, 'order:', paypalOrderId);
 
         ok(res, { success: true, message: 'Subscribed!' });
     } catch (e) {
@@ -133,6 +136,7 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
 
         if (existingTx) {
             if (existingTx.status === 'COMPLETED') {
+                logger.payment('TOOLS_DUPLICATE_BLOCKED', { email: req.user.email, orderId: paypalOrderId, requestId: req.requestId });
                 return err(res, 'This payment has already been processed.', 409);
             }
             return err(res, 'This order is already being processed.', 409);
@@ -153,7 +157,7 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
         try {
             order = await verifyOrder(paypalOrderId);
         } catch (verifyError) {
-            logger.error('Tools PayPal verify error:', verifyError.message, 'order:', paypalOrderId);
+            logger.payment('TOOLS_VERIFY_FAILED', { email: req.user.email, planId, orderId: paypalOrderId, error: verifyError.message, requestId: req.requestId });
             return err(res, 'Payment verification failed. Contact support with your order ID.', 500);
         }
 
@@ -161,7 +165,7 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
         const paypalAmount = Number(order.amount).toFixed(2);
 
         if (paypalAmount !== serverAmount) {
-            logger.error('Tools price mismatch:', { server: serverAmount, paypal: paypalAmount, order: paypalOrderId });
+            logger.payment('TOOLS_PRICE_MISMATCH', { email: req.user.email, planId, server: serverAmount, paypal: paypalAmount, orderId: paypalOrderId, requestId: req.requestId });
             return err(res, 'Payment amount does not match the plan price. Contact support.', 400);
         }
 
@@ -192,6 +196,9 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
             return err(res, 'Payment verified but activation failed. Contact support.', 500);
         }
 
+        logger.payment('TOOLS_SUB_SUCCESS', { userId: req.user.id, email: req.user.email, plan: plan.name, amount: `${order.currency} ${order.amount}`, orderId: paypalOrderId, ip: req.ip, requestId: req.requestId });
+        logger.activity(req.user.id, req.user.email, 'TOOLS_SUBSCRIBE', { planId, amount: order.amount, orderId: paypalOrderId, requestId: req.requestId });
+
         await sendTelegram(`🔧 <b>Tools Sub!</b>\n${plan.name}\n$${plan.price}/mo\n${req.user.email}\nOrder: ${paypalOrderId}`);
         logger.info('Tools subscription:', plan.name, 'for:', req.user.email);
 
@@ -210,16 +217,18 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
     try {
         const valid = await verifyWebhookSignature(req.headers, body);
         if (!valid) {
+            logger.payment('WEBHOOK_INVALID_SIG', { requestId: req.requestId });
             logger.warn('Webhook signature verification failed');
             return err(res, 'Invalid webhook signature', 401);
         }
     } catch (verifyError) {
+        logger.payment('WEBHOOK_SIG_ERROR', { error: verifyError.message, requestId: req.requestId });
         logger.error('Webhook verify error:', verifyError.message);
         return err(res, 'Webhook verification failed', 500);
     }
 
     const eventType = body.event_type || '';
-    logger.info('PayPal webhook received:', eventType);
+    logger.payment('WEBHOOK_RECEIVED', { eventType, requestId: req.requestId });
 
     if (eventType !== 'PAYMENT.CAPTURE.COMPLETED') {
         return ok(res, { success: true, message: 'Event ignored' });
@@ -246,7 +255,7 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
             .maybeSingle();
 
         if (existingTx && existingTx.status === 'COMPLETED') {
-            logger.info('Webhook: order already processed', orderId);
+            logger.payment('WEBHOOK_DUPLICATE', { orderId, requestId: req.requestId });
             return ok(res, { success: true, message: 'Already processed' });
         }
 
@@ -254,6 +263,7 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
         try {
             order = await verifyOrder(orderId);
         } catch {
+            logger.payment('WEBHOOK_ORDER_VERIFY_FAILED', { orderId, requestId: req.requestId });
             logger.warn('Webhook: could not verify order', orderId);
             return ok(res, { success: true, message: 'Order verification failed' });
         }
@@ -274,6 +284,7 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
             .maybeSingle();
 
         if (!user) {
+            logger.payment('WEBHOOK_USER_NOT_FOUND', { payerEmail, orderId, requestId: req.requestId });
             logger.warn('Webhook: user not found for payer email', payerEmail, orderId);
             return ok(res, { success: true, message: 'User not found' });
         }
@@ -330,12 +341,15 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
                         active: true,
                     });
 
+                    logger.payment('WEBHOOK_SUB_ACTIVATED', { userId: user.id, email: user.email, agentId: customId, agent: agent.name, amount: `${order.currency} ${amount}`, orderId, requestId: req.requestId });
+                    logger.activity(user.id, user.email, 'WEBHOOK_SUB', { agentId: customId, amount, orderId, requestId: req.requestId });
+
                     await sendTelegram(`🔔 <b>Webhook Sub!</b>\n${agent.name}\n$${agent.price}/mo\n${user.email}\nOrder: ${orderId}`);
-                    logger.info('Webhook activated subscription:', agent.name, 'for:', user.email);
                 }
             }
         }
 
+        logger.payment('WEBHOOK_PROCESSED', { orderId, payerEmail, amount: `${order.currency} ${amount}`, requestId: req.requestId });
         await sendTelegram(`💰 <b>Webhook Payment!</b>\nOrder: ${orderId}\nAmount: ${amount} ${order.currency}\nEmail: ${payerEmail}`);
         ok(res, { success: true, message: 'Webhook processed' });
     } catch (e) {
