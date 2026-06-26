@@ -6,6 +6,7 @@ const { sanitizeText } = require('../utils/sanitize');
 const { validate } = require('../middleware/validator');
 const { ok, err } = require('../utils/helpers');
 const logger = require('../utils/logger');
+const { sendVerificationEmail, sendResetEmail } = require('../utils/email');
 const {
     generateAccessToken,
     generateRefreshToken,
@@ -191,13 +192,7 @@ router.post('/signup', async (req, res) => {
             logger.warn('Email capture skipped:', e?.message || e);
         }
 
-        try {
-            // TODO: Replace with your email service call
-            // await sendVerificationEmail(user.email, verificationToken);
-            logger.info(`Verification email queued for: ${user.email}`);
-        } catch (e) {
-            logger.warn('Verification email failed:', e?.message || e);
-        }
+        await sendVerificationEmail(user.email, verificationToken);
 
         const accessToken = generateAccessToken(user.id, user.email);
         const refreshToken = generateRefreshToken();
@@ -442,9 +437,7 @@ router.post('/forgot-password', async (req, res) => {
                 .eq('id', user.id);
 
             if (!updateError) {
-                // TODO: Replace with your email service call
-                // await sendResetEmail(user.email, resetToken);
-                logger.info(`Password reset email queued for: ${user.email}`);
+                await sendResetEmail(user.email, resetToken);
             }
         }
 
@@ -625,8 +618,7 @@ router.post('/resend-verification', async (req, res) => {
             return err(res, 'Failed to send verification email', 500);
         }
 
-        // TODO: Replace with your email service call
-        logger.info(`Verification email re-sent for: ${user.email}`);
+        await sendVerificationEmail(user.email, verificationToken);
 
         return ok(res, { success: true, message: 'Verification email sent.' });
     } catch (error) {
