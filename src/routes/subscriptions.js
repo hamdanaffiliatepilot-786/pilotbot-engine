@@ -53,7 +53,6 @@ router.post('/subscribe', authenticate, async (req, res) => {
     }
 
     try {
-        // 1. Duplicate order check
         const { data: existingTx } = await db
             .from('transactions')
             .select('id, status')
@@ -67,7 +66,6 @@ router.post('/subscribe', authenticate, async (req, res) => {
             return err(res, 'This order is already being processed.', 409);
         }
 
-        // 2. PayPal verify
         let order;
         try {
             order = await verifyOrder(paypalOrderId);
@@ -76,7 +74,6 @@ router.post('/subscribe', authenticate, async (req, res) => {
             return err(res, 'Payment verification failed. If you were charged, contact support with your order ID.', 500);
         }
 
-        // 3. Atomic transaction — pricing check + deactivation + insert + log + pro update
         const { data: result, error: rpcError } = await db.rpc('subscribe_with_tx', {
             p_user_id: req.user.id,
             p_email: req.user.email,
@@ -113,7 +110,7 @@ router.post('/subscribe', authenticate, async (req, res) => {
     }
 });
 
-// ─── Subscribe to Tools Plan — JWT + PayPal verify + Server pricing ───
+// ─── Subscribe to Tools Plan ───
 
 router.post('/subscribe-tools', authenticate, async (req, res) => {
     if (!requireDB(res)) return;
@@ -128,7 +125,6 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
     }
 
     try {
-        // 1. Duplicate check
         const { data: existingTx } = await db
             .from('transactions')
             .select('id, status')
@@ -142,7 +138,6 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
             return err(res, 'This order is already being processed.', 409);
         }
 
-        // 2. Server-side pricing
         const { data: plan, error: planError } = await db
             .from('tools_plans')
             .select('id, name, price')
@@ -154,7 +149,6 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
             return err(res, 'Tools plan not found', 404);
         }
 
-        // 3. PayPal verify
         let order;
         try {
             order = await verifyOrder(paypalOrderId);
@@ -163,7 +157,6 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
             return err(res, 'Payment verification failed. Contact support with your order ID.', 500);
         }
 
-        // 4. Amount match
         const serverAmount = Number(plan.price).toFixed(2);
         const paypalAmount = Number(order.amount).toFixed(2);
 
@@ -172,7 +165,6 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
             return err(res, 'Payment amount does not match the plan price. Contact support.', 400);
         }
 
-        // 5. Transaction log
         await db.from('transactions').insert({
             user_id: req.user.id,
             email: req.user.email,
@@ -187,7 +179,6 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
             source: 'checkout',
         });
 
-        // 6. Activate
         const { error: subError } = await db.from('tool_subscriptions').upsert({
             email: req.user.email,
             plan_name: plan.name,
@@ -211,12 +202,11 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
     }
 });
 
-// ─── PayPal Webhook — Verified signature + Fallback activation ───
+// ─── PayPal Webhook ───
 
 router.post('/paypal-webhook', optionalAuth, async (req, res) => {
     const body = req.body;
 
-    // 1. Signature verify
     try {
         const valid = await verifyWebhookSignature(req.headers, body);
         if (!valid) {
@@ -231,7 +221,6 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
     const eventType = body.event_type || '';
     logger.info('PayPal webhook received:', eventType);
 
-    // 2. Sirf PAYMENT.CAPTURE.COMPLETED process karo
     if (eventType !== 'PAYMENT.CAPTURE.COMPLETED') {
         return ok(res, { success: true, message: 'Event ignored' });
     }
@@ -250,7 +239,6 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
     const db = req.app.locals.supabase;
 
     try {
-        // 3. Check if already processed
         const { data: existingTx } = await db
             .from('transactions')
             .select('id, status')
@@ -262,7 +250,6 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
             return ok(res, { success: true, message: 'Already processed' });
         }
 
-        // 4. PayPal se order details lo
         let order;
         try {
             order = await verifyOrder(orderId);
@@ -280,7 +267,6 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
             return ok(res, { success: true, message: 'No payer email' });
         }
 
-        // 5. User dhundo
         const { data: user } = await db
             .from('users')
             .select('id, email')
@@ -292,7 +278,6 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
             return ok(res, { success: true, message: 'User not found' });
         }
 
-        // 6. Duplicate check again (race condition safety)
         if (existingTx && existingTx.status !== 'COMPLETED') {
             await db.from('transactions')
                 .update({ status: 'COMPLETED' })
@@ -310,4 +295,53 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
                 paypal_capture_id: order.captureId,
                 payer_email: payerEmail,
                 raw_response: order.raw,
-                source: 'webhook
+                source: 'webhook',
+            });
+        }
+
+        if (customId) {
+            const { data: agent } = await db
+                .from('ai_staff')
+                .select('id, name, price')
+                .eq('id', customId)
+                .maybeSingle();
+
+            if (agent) {
+                const { data: existingSub } = await db
+                    .from('subscriptions')
+                    .select('id')
+                    .eq('email', user.email)
+                    .eq('agent_id', customId)
+                    .eq('active', true)
+                    .maybeSingle();
+
+                if (!existingSub) {
+                    await db.from('subscriptions')
+                        .update({ active: false })
+                        .eq('email', user.email)
+                        .eq('agent_id', customId);
+
+                    await db.from('subscriptions').insert({
+                        email: user.email,
+                        agent_id: customId,
+                        plan_name: agent.name,
+                        price: `$${agent.price}/mo`,
+                        paypal_order_id: orderId,
+                        active: true,
+                    });
+
+                    await sendTelegram(`🔔 <b>Webhook Sub!</b>\n${agent.name}\n$${agent.price}/mo\n${user.email}\nOrder: ${orderId}`);
+                    logger.info('Webhook activated subscription:', agent.name, 'for:', user.email);
+                }
+            }
+        }
+
+        await sendTelegram(`💰 <b>Webhook Payment!</b>\nOrder: ${orderId}\nAmount: ${amount} ${order.currency}\nEmail: ${payerEmail}`);
+        ok(res, { success: true, message: 'Webhook processed' });
+    } catch (e) {
+        logger.error('Webhook processing error:', e.message);
+        ok(res, { success: true, message: 'Webhook received' });
+    }
+});
+
+module.exports = router;
