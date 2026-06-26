@@ -9,8 +9,6 @@ const { verifyOrder, verifyWebhookSignature } = require('../services/paypal.serv
 
 const router = Router();
 
-// ─── Helper ───
-
 function getErrorMessage(error, fallback) {
     const message = String(error?.message || error || '');
     if (!message || message.length > 300) return fallback;
@@ -40,7 +38,7 @@ router.get('/my-subscriptions', authenticate, async (req, res) => {
     }
 });
 
-// ─── Subscribe to AI Staff — JWT + PayPal verify + Server pricing ───
+// ─── Subscribe to AI Staff — Transaction RPC (atomic) ───
 
 router.post('/subscribe', authenticate, async (req, res) => {
     if (!requireDB(res)) return;
@@ -69,20 +67,7 @@ router.post('/subscribe', authenticate, async (req, res) => {
             return err(res, 'This order is already being processed.', 409);
         }
 
-        // 2. Server-side pricing — DB se real price fetch karo
-        //    NOTE: Agar tumhari table ka naam alag hai toh 'ai_staff' change karo
-        const { data: agent, error: agentError } = await db
-            .from('ai_staff')
-            .select('id, name, price')
-            .eq('id', agentId)
-            .maybeSingle();
-
-        if (agentError || !agent) {
-            logger.error('Agent lookup failed:', agentError?.message || 'not found', agentId);
-            return err(res, 'AI Staff plan not found', 404);
-        }
-
-        // 3. PayPal se order verify karo
+        // 2. PayPal verify
         let order;
         try {
             order = await verifyOrder(paypalOrderId);
@@ -91,58 +76,35 @@ router.post('/subscribe', authenticate, async (req, res) => {
             return err(res, 'Payment verification failed. If you were charged, contact support with your order ID.', 500);
         }
 
-        // 4. Amount match karo — server price vs PayPal amount
-        const serverAmount = Number(agent.price).toFixed(2);
-        const paypalAmount = Number(order.amount).toFixed(2);
-
-        if (paypalAmount !== serverAmount) {
-            logger.error('Price mismatch:', { server: serverAmount, paypal: paypalAmount, order: paypalOrderId, agent: agentId });
-            return err(res, 'Payment amount does not match the plan price. If you were charged, contact support.', 400);
-        }
-
-        // 5. Transaction log karo
-        const { error: txError } = await db.from('transactions').insert({
-            user_id: req.user.id,
-            email: req.user.email,
-            paypal_order_id: paypalOrderId,
-            agent_id: agentId,
-            plan_name: agent.name,
-            amount: paypalAmount,
-            currency: order.currency,
-            status: 'COMPLETED',
-            paypal_capture_id: order.captureId,
-            payer_email: order.payerEmail,
-            raw_response: order.raw,
-            source: 'checkout',
+        // 3. Atomic transaction — pricing check + deactivation + insert + log + pro update
+        const { data: result, error: rpcError } = await db.rpc('subscribe_with_tx', {
+            p_user_id: req.user.id,
+            p_email: req.user.email,
+            p_agent_id: agentId,
+            p_plan_name: '',
+            p_price: '',
+            p_paypal_order_id: paypalOrderId,
+            p_amount: order.amount,
+            p_currency: order.currency,
+            p_capture_id: order.captureId,
+            p_payer_email: order.payerEmail,
+            p_raw: order.raw,
         });
 
-        if (txError) {
-            logger.error('Transaction save error:', txError.message);
-            return err(res, 'Payment verified but logging failed. Contact support with your order ID.', 500);
+        if (rpcError) {
+            logger.error('Subscribe RPC error:', rpcError.message, 'order:', paypalOrderId);
+            return err(res, 'Subscription failed. Contact support with your order ID.', 500);
         }
 
-        // 6. Subscription activate karo
-        await db.from('subscriptions')
-            .update({ active: false })
-            .eq('email', req.user.email)
-            .eq('agent_id', agentId);
-
-        const { error: subError } = await db.from('subscriptions').insert({
-            email: req.user.email,
-            agent_id: agentId,
-            plan_name: agent.name,
-            price: `$${agent.price}/mo`,
-            paypal_order_id: paypalOrderId,
-            active: true,
-        });
-
-        if (subError) {
-            logger.error('Subscription save error:', subError.message);
-            return err(res, 'Payment verified but activation failed. Contact support with your order ID.', 500);
+        if (!result || result.success === false) {
+            logger.error('Subscribe TX failed:', result?.error, 'order:', paypalOrderId);
+            return err(res, result?.error || 'Subscription failed. Contact support.', 400);
         }
 
-        await sendTelegram(`🚀 <b>New Sub!</b>\n${agent.name}\n$${agent.price}/mo\n${req.user.email}\nOrder: ${paypalOrderId}`);
-        logger.info('New subscription:', agent.name, 'for:', req.user.email, 'order:', paypalOrderId);
+        await sendTelegram(
+            `🚀 <b>New Sub!</b>\n${result.plan || agentId}\n$${order.amount}/mo\n${req.user.email}\nOrder: ${paypalOrderId}`
+        );
+        logger.info('New subscription:', result.plan || agentId, 'for:', req.user.email, 'order:', paypalOrderId);
 
         ok(res, { success: true, message: 'Subscribed!' });
     } catch (e) {
@@ -181,7 +143,6 @@ router.post('/subscribe-tools', authenticate, async (req, res) => {
         }
 
         // 2. Server-side pricing
-        //    NOTE: Agar table ka naam ya column alag hai toh change karo
         const { data: plan, error: planError } = await db
             .from('tools_plans')
             .select('id, name, price')
@@ -289,7 +250,7 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
     const db = req.app.locals.supabase;
 
     try {
-        // 3. Check if already processed by main /subscribe flow
+        // 3. Check if already processed
         const { data: existingTx } = await db
             .from('transactions')
             .select('id, status')
@@ -337,7 +298,6 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
                 .update({ status: 'COMPLETED' })
                 .eq('id', existingTx.id);
         } else {
-            // Transaction log
             await db.from('transactions').insert({
                 user_id: user.id,
                 email: user.email,
@@ -350,54 +310,4 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
                 paypal_capture_id: order.captureId,
                 payer_email: payerEmail,
                 raw_response: order.raw,
-                source: 'webhook',
-            });
-        }
-
-        // 7. Activate subscription if agentId available (from custom_id)
-        if (customId) {
-            const { data: agent } = await db
-                .from('ai_staff')
-                .select('id, name, price')
-                .eq('id', customId)
-                .maybeSingle();
-
-            if (agent) {
-                const { data: existingSub } = await db
-                    .from('subscriptions')
-                    .select('id')
-                    .eq('email', user.email)
-                    .eq('agent_id', customId)
-                    .eq('active', true)
-                    .maybeSingle();
-
-                if (!existingSub) {
-                    await db.from('subscriptions')
-                        .update({ active: false })
-                        .eq('email', user.email)
-                        .eq('agent_id', customId);
-
-                    await db.from('subscriptions').insert({
-                        email: user.email,
-                        agent_id: customId,
-                        plan_name: agent.name,
-                        price: `$${agent.price}/mo`,
-                        paypal_order_id: orderId,
-                        active: true,
-                    });
-
-                    await sendTelegram(`🔔 <b>Webhook Sub!</b>\n${agent.name}\n$${agent.price}/mo\n${user.email}\nOrder: ${orderId}`);
-                    logger.info('Webhook activated subscription:', agent.name, 'for:', user.email);
-                }
-            }
-        }
-
-        await sendTelegram(`💰 <b>Webhook Payment!</b>\nOrder: ${orderId}\nAmount: ${amount} ${order.currency}\nEmail: ${payerEmail}`);
-        ok(res, { success: true, message: 'Webhook processed' });
-    } catch (e) {
-        logger.error('Webhook processing error:', e.message);
-        ok(res, { success: true, message: 'Webhook received' });
-    }
-});
-
-module.exports = router;
+                source: 'webhook
