@@ -392,4 +392,12 @@ router.post('/paypal-webhook', optionalAuth, async (req, res) => {
             }
         }
 
-        await sendTelegram(`💰 <b>Webhook Payment!</b>\nOrder: ${orderId}\nAmount: ${
+        await sendTelegram(`💰 <b>Webhook Payment!</b>\nOrder: ${orderId}\nAmount: ${amount} ${order.currency}\nEmail: ${payerEmail}`);
+        ok(res, { success: true, message: 'Webhook processed' });
+    } catch (e) {
+        logger.error('Webhook processing error:', e.message);
+        ok(res, { success: true, message: 'Webhook received' });
+    }
+});
+
+module.exports = router;
