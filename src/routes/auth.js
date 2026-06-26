@@ -17,7 +17,7 @@ const {
 
 const router = Router();
 
-// ─── Rate Limiter (in-memory, per IP + per email) ───
+// ─── Rate Limiter ───
 
 const rateLimits = new Map();
 
@@ -156,6 +156,7 @@ router.post('/signup', async (req, res) => {
         }
 
         if (existingUser) {
+            logger.auth('SIGNUP_FAILED', { email: cleanEmail, reason: 'exists', ip: req.ip, requestId: req.requestId });
             return err(res, 'An account with this email already exists. Please login instead.', 409);
         }
 
@@ -203,7 +204,7 @@ router.post('/signup', async (req, res) => {
 
         await createSession(user.id, refreshToken, req);
 
-        logger.info(`New signup: ${user.email}`);
+        logger.auth('SIGNUP', { userId: user.id, email: cleanEmail, name: cleanName, ip: req.ip, requestId: req.requestId });
 
         return ok(res, {
             success: true,
@@ -236,10 +237,16 @@ router.post('/login', async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
 
     const ipLimit = rateLimit(`login_ip:${req.ip}`, 20, 900000);
-    if (ipLimit) return err(res, `Too many login attempts. Try again in ${ipLimit.retryAfter} seconds.`, 429);
+    if (ipLimit) {
+        logger.auth('LOGIN_RATE_LIMITED', { email: cleanEmail, reason: 'ip', ip: req.ip, requestId: req.requestId });
+        return err(res, `Too many login attempts. Try again in ${ipLimit.retryAfter} seconds.`, 429);
+    }
 
     const emailLimit = rateLimit(`login_email:${cleanEmail}`, 10, 900000);
-    if (emailLimit) return err(res, `Too many login attempts for this email. Try again in ${emailLimit.retryAfter} seconds.`, 429);
+    if (emailLimit) {
+        logger.auth('LOGIN_RATE_LIMITED', { email: cleanEmail, reason: 'email', ip: req.ip, requestId: req.requestId });
+        return err(res, `Too many login attempts for this email. Try again in ${emailLimit.retryAfter} seconds.`, 429);
+    }
 
     try {
         const { data: user, error: lookupError } = await supabase
@@ -253,11 +260,20 @@ router.post('/login', async (req, res) => {
             return err(res, `Database error: ${getErrorMessage(lookupError, 'Could not find account')}`, 500);
         }
 
-        if (!user) return err(res, 'No account found with this email.', 404);
-        if (!user.password_hash) return err(res, 'This account has no password set. Please create a new account.', 400);
+        if (!user) {
+            logger.auth('LOGIN_FAILED', { email: cleanEmail, reason: 'not_found', ip: req.ip, requestId: req.requestId });
+            return err(res, 'No account found with this email.', 404);
+        }
+        if (!user.password_hash) {
+            logger.auth('LOGIN_FAILED', { email: cleanEmail, reason: 'no_password', ip: req.ip, requestId: req.requestId });
+            return err(res, 'This account has no password set. Please create a new account.', 400);
+        }
 
         const passwordMatches = await bcrypt.compare(password, user.password_hash);
-        if (!passwordMatches) return err(res, 'Incorrect email or password.', 401);
+        if (!passwordMatches) {
+            logger.auth('LOGIN_FAILED', { userId: user.id, email: cleanEmail, reason: 'wrong_password', ip: req.ip, requestId: req.requestId });
+            return err(res, 'Incorrect email or password.', 401);
+        }
 
         const accessToken = generateAccessToken(user.id, user.email);
         const refreshToken = generateRefreshToken();
@@ -267,6 +283,8 @@ router.post('/login', async (req, res) => {
         }
 
         await createSession(user.id, refreshToken, req);
+
+        logger.auth('LOGIN', { userId: user.id, email: cleanEmail, name: user.name, ip: req.ip, requestId: req.requestId });
 
         return ok(res, {
             success: true,
@@ -292,6 +310,7 @@ router.post('/refresh', async (req, res) => {
     if (!supabase) return err(res, 'Database not configured', 503);
 
     if (!verifyRefreshToken(refresh_token)) {
+        logger.auth('REFRESH_FAILED', { reason: 'invalid_token', requestId: req.requestId });
         return err(res, 'Invalid or expired refresh token', 401);
     }
 
@@ -309,11 +328,18 @@ router.post('/refresh', async (req, res) => {
             return err(res, 'Session lookup failed', 500);
         }
 
-        if (!session) return err(res, 'Session not found', 401);
-        if (session.revoked) return err(res, 'Session revoked', 401);
+        if (!session) {
+            logger.auth('REFRESH_FAILED', { reason: 'session_not_found', requestId: req.requestId });
+            return err(res, 'Session not found', 401);
+        }
+        if (session.revoked) {
+            logger.auth('REFRESH_FAILED', { reason: 'session_revoked', requestId: req.requestId });
+            return err(res, 'Session revoked', 401);
+        }
 
         if (new Date(session.expires_at) < new Date()) {
             await supabase.from('sessions').update({ revoked: true }).eq('id', session.id);
+            logger.auth('REFRESH_FAILED', { reason: 'session_expired', requestId: req.requestId });
             return err(res, 'Refresh token expired. Please login again.', 401);
         }
 
@@ -338,6 +364,8 @@ router.post('/refresh', async (req, res) => {
         await supabase.from('sessions').update({ revoked: true }).eq('id', session.id);
         await createSession(user.id, newRefreshToken, req);
 
+        logger.auth('TOKEN_REFRESH', { userId: user.id, email: user.email, requestId: req.requestId });
+
         return ok(res, {
             success: true,
             token: newAccessToken,
@@ -358,6 +386,8 @@ router.post('/logout', async (req, res) => {
     if (refreshToken) {
         await revokeSession(refreshToken);
     }
+
+    logger.auth('LOGOUT', { requestId: req.requestId });
 
     return ok(res, { success: true, message: 'Logged out' });
 });
@@ -410,7 +440,10 @@ router.post('/forgot-password', async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
 
     const limit = rateLimit(`forgot:${cleanEmail}`, 3, 900000);
-    if (limit) return err(res, `Too many requests. Try again in ${limit.retryAfter} seconds.`, 429);
+    if (limit) {
+        logger.auth('FORGOT_PASSWORD_RATE_LIMITED', { email: cleanEmail, ip: req.ip, requestId: req.requestId });
+        return err(res, `Too many requests. Try again in ${limit.retryAfter} seconds.`, 429);
+    }
 
     try {
         const { data: user, error: lookupError } = await supabase
@@ -438,6 +471,7 @@ router.post('/forgot-password', async (req, res) => {
 
             if (!updateError) {
                 await sendResetEmail(user.email, resetToken);
+                logger.auth('FORGOT_PASSWORD', { userId: user.id, email: cleanEmail, ip: req.ip, requestId: req.requestId });
             }
         }
 
@@ -483,10 +517,12 @@ router.post('/reset-password', async (req, res) => {
         }
 
         if (!user || !user.reset_token) {
+            logger.auth('RESET_PASSWORD_FAILED', { reason: 'invalid_token', requestId: req.requestId });
             return err(res, 'Invalid or expired reset link', 400);
         }
 
         if (new Date(user.reset_token_expires) < new Date()) {
+            logger.auth('RESET_PASSWORD_FAILED', { userId: user.id, email: user.email, reason: 'expired', requestId: req.requestId });
             return err(res, 'Reset link has expired. Please request a new one.', 400);
         }
 
@@ -508,7 +544,7 @@ router.post('/reset-password', async (req, res) => {
 
         await revokeAllSessions(user.id);
 
-        logger.info(`Password reset for: ${user.email}`);
+        logger.auth('PASSWORD_RESET', { userId: user.id, email: user.email, ip: req.ip, requestId: req.requestId });
 
         return ok(res, {
             success: true,
@@ -569,7 +605,7 @@ router.post('/verify-email', async (req, res) => {
             return err(res, 'Failed to verify email', 500);
         }
 
-        logger.info(`Email verified: ${user.email}`);
+        logger.auth('EMAIL_VERIFIED', { userId: user.id, email: user.email, requestId: req.requestId });
 
         return ok(res, { success: true, message: 'Email verified successfully.' });
     } catch (error) {
@@ -620,6 +656,8 @@ router.post('/resend-verification', async (req, res) => {
 
         await sendVerificationEmail(user.email, verificationToken);
 
+        logger.auth('VERIFICATION_RESENT', { userId: user.id, email: user.email, requestId: req.requestId });
+
         return ok(res, { success: true, message: 'Verification email sent.' });
     } catch (error) {
         logger.error('Resend verification exception:', error?.message || error);
@@ -627,7 +665,7 @@ router.post('/resend-verification', async (req, res) => {
     }
 });
 
-// ─── CHANGE PASSWORD (authenticated) ───
+// ─── CHANGE PASSWORD ───
 
 router.post('/change-password', async (req, res) => {
     const accessToken = extractBearerToken(req);
@@ -659,7 +697,10 @@ router.post('/change-password', async (req, res) => {
         if (lookupError || !user) return err(res, 'User not found', 404);
 
         const passwordMatches = await bcrypt.compare(current_password, user.password_hash);
-        if (!passwordMatches) return err(res, 'Current password is incorrect', 401);
+        if (!passwordMatches) {
+            logger.auth('CHANGE_PASSWORD_FAILED', { userId: user.id, email: user.email, reason: 'wrong_current', requestId: req.requestId });
+            return err(res, 'Current password is incorrect', 401);
+        }
 
         const passwordHash = await bcrypt.hash(new_password, 10);
 
@@ -675,7 +716,7 @@ router.post('/change-password', async (req, res) => {
 
         await revokeAllSessions(user.id);
 
-        logger.info(`Password changed for: ${user.email}`);
+        logger.auth('PASSWORD_CHANGED', { userId: user.id, email: user.email, ip: req.ip, requestId: req.requestId });
 
         return ok(res, { success: true, message: 'Password changed. Please login again.' });
     } catch (error) {
