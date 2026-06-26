@@ -1,9 +1,9 @@
 const { env } = require('../config/env');
-const logger = require('../logger');
+const logger = require('./logger');
 
 const RESEND_API_KEY = env('RESEND_API_KEY');
 const FRONTEND_URL = (env('FRONTEND_URL') || '').replace(/\/+$/, '');
-const FROM_EMAIL = 'PilotBot <noreply@pilotstaff.com>';
+const FROM_EMAIL = 'PilotBot <onboarding@resend.dev>';
 
 async function sendEmail({ to, subject, html }) {
     if (!RESEND_API_KEY) {
