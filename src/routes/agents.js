@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const { optionalAuth } = require('../middleware/auth');
 const { askAI } = require('../services/ai.service');
 const { sanitizeText, extractJSON } = require('../utils/sanitize');
 const { env } = require('../config/env');
@@ -6,6 +7,9 @@ const { ok, err } = require('../utils/helpers');
 
 const router = Router();
 const WEBSITE_URL = env('WEBSITE_URL') || 'https://pilotstaff.com';
+
+// Optional auth — req.user available if logged in, but doesn't block demo usage
+router.use(optionalAuth);
 
 // === FREE DEMO AGENTS ===
 
@@ -114,7 +118,7 @@ Include: [HOOK:] [INTRO:] [SECTION 1-5:] [B-ROLL:] [TEXT ON SCREEN:] [SFX:] [CTA
     ok(res, { success: true, script });
 });
 
-// === PREMIUM AGENTS ($49-99/mo) ===
+// === PREMIUM AGENTS ===
 
 router.post('/conversion-funnel-architect', async (req, res) => {
     const task = sanitizeText(req.body.prompt || req.body.question || '', 5000);
