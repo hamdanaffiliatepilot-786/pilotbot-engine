@@ -2,11 +2,11 @@ const express = require("express");
 const router = express.Router();
 
 const { supabase } = require("../config/database");
-const { dashboardAuth } = require("../middleware/auth");
+const { authenticate } = require("../middleware/auth");
 const { ok, err } = require("../utils/helpers");
 const { runTaskNow } = require("../services/task.service");
 
-router.use(dashboardAuth);
+router.use(authenticate);
 
 function getUserEmail(req) {
   return String(req.user?.email || "").trim().toLowerCase();
