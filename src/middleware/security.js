@@ -1,11 +1,11 @@
 const crypto = require('crypto');
-const { env } = require('../config/env');
+const { env, envBool } = require('../config/env');
 const { err } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 const INTERNAL_CRON_SECRET = env('CRON_SECRET');
 
-// ─── Request ID — har request ko unique ID ───
+// ─── Request ID ───
 
 function requestId(req, res, next) {
     const id = req.headers['x-request-id'] || crypto.randomUUID();
@@ -14,7 +14,7 @@ function requestId(req, res, next) {
     next();
 }
 
-// ─── Security Headers (Helmet-like) ───
+// ─── Security Headers ───
 
 function securityHeaders(req, res, next) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -26,28 +26,33 @@ function securityHeaders(req, res, next) {
     next();
 }
 
-// ─── CORS — sirf allowed origins ───
+// ─── CORS ───
 
 function cors(req, res, next) {
-    const allowedOrigins = (env('CORS_ORIGINS') || '')
-        .split(',')
-        .map(s => s.trim().replace(/\/+$/, ''))
-        .filter(Boolean);
+    const configuredOrigins = [
+        env('FRONTEND_URL'),
+        ...env('FRONTEND_URLS')
+            .split(',')
+            .map((u) => u.trim().replace(/\/+$/, ''))
+            .filter(Boolean),
+        'http://localhost:3000',
+    ].filter(Boolean);
 
-    const frontendUrl = (env('FRONTEND_URL') || '').replace(/\/+$/, '');
-    if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
-        allowedOrigins.push(frontendUrl);
+    const origin = (req.headers.origin || '').trim().replace(/\/+$/, '');
+    const isAllowed = !origin
+        || configuredOrigins.includes(origin)
+        || (envBool('ALLOW_VERCEL_PREVIEWS') && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin));
+
+    if (!isAllowed && origin) {
+        logger.warn(`Blocked CORS origin: ${origin}`);
     }
-
-    const origin = (req.headers.origin || '').replace(/\/+$/, '');
-    const isAllowed = !origin || allowedOrigins.includes(origin);
 
     if (isAllowed && origin) {
         res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Vary', 'Origin');
     }
 
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, X-Cron-Secret');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Max-Age', '86400');
@@ -59,7 +64,7 @@ function cors(req, res, next) {
     next();
 }
 
-// ─── Rate Limiter — reusable middleware ───
+// ─── Rate Limiter ───
 
 const rateLimitStore = new Map();
 
@@ -112,7 +117,7 @@ setInterval(() => {
 
 function requestLogger(req, res, next) {
     const start = Date.now();
-    const { method, originalUrl, ip } = req;
+    const { method, originalUrl } = req;
 
     res.on('finish', () => {
         const duration = Date.now() - start;
