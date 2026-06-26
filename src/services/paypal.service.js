@@ -1,5 +1,5 @@
 const { env } = require('../config/env');
-const logger = require('../logger');
+const logger = require('../utils/logger');
 
 const PAYPAL_CLIENT_ID = env('PAYPAL_CLIENT_ID');
 const PAYPAL_CLIENT_SECRET = env('PAYPAL_CLIENT_SECRET');
