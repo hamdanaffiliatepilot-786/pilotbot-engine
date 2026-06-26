@@ -97,6 +97,10 @@ function optionalAuth(req, res, next) {
     next();
 }
 
+// JWT-only alias — no email fallback, no query param acceptance
+// Keeps existing route files from crashing while enforcing strict auth
+const dashboardAuth = authenticate;
+
 module.exports = {
     generateAccessToken,
     generateRefreshToken,
@@ -105,6 +109,7 @@ module.exports = {
     hashToken,
     authenticate,
     optionalAuth,
+    dashboardAuth,
     ACCESS_TOKEN_EXPIRY,
     REFRESH_TOKEN_EXPIRY,
 };
