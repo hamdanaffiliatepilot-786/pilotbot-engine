@@ -1,5 +1,12 @@
 require('dotenv').config();
 
+// ─── Startup Validation — fail fast if critical vars missing in production ───
+
+const { validateEnv } = require('./config/validate');
+validateEnv();
+
+// ─── App ───
+
 const express = require('express');
 const compression = require('compression');
 
@@ -97,14 +104,17 @@ app.use((req, res) => {
     });
 });
 
-// ─── Error Handler ───
+// ─── Error Handler — with Error ID + Request ID ───
 app.use((error, req, res, _next) => {
     const rid = req.requestId || '-';
-    logger.error(`[${rid}] Unhandled error on ${req.method} ${req.originalUrl}: ${error?.message || error}`);
+    const eid = logger.errorId();
+
+    logger.error(`[${rid}][ERR:${eid}] Unhandled error on ${req.method} ${req.originalUrl}: ${error?.message || error}`);
 
     return res.status(500).json({
         success: false,
         error: 'Internal server error',
+        error_id: eid,
     });
 });
 
