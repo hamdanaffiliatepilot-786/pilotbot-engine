@@ -1,4 +1,3 @@
-const axios = require('axios');
 const { env } = require('../config/env');
 const logger = require('../utils/logger');
 
@@ -9,18 +8,33 @@ async function sendTelegram(message) {
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
 
     try {
-        await axios.post(
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(
             `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
             {
-                chat_id: TELEGRAM_CHAT_ID,
-                text: String(message).substring(0, 4000),
-                parse_mode: 'HTML',
-                disable_web_page_preview: true
-            },
-            { timeout: 10000 }
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: TELEGRAM_CHAT_ID,
+                    text: String(message).substring(0, 4000),
+                    parse_mode: 'HTML',
+                    disable_web_page_preview: true,
+                }),
+                signal: controller.signal,
+            }
         );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            logger.warn('Telegram send failed:', data?.description || `HTTP ${response.status}`);
+        }
     } catch (e) {
-        logger.warn('Telegram send failed:', e.message?.substring(0, 100));
+        const msg = e.name === 'AbortError' ? 'Timeout' : (e.message || 'Unknown');
+        logger.warn('Telegram send failed:', msg.substring(0, 100));
     }
 }
 
