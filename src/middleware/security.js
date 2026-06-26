@@ -1,8 +1,137 @@
 const crypto = require('crypto');
 const { env } = require('../config/env');
 const { err } = require('../utils/helpers');
+const logger = require('../utils/logger');
 
 const INTERNAL_CRON_SECRET = env('CRON_SECRET');
+
+// ─── Request ID — har request ko unique ID ───
+
+function requestId(req, res, next) {
+    const id = req.headers['x-request-id'] || crypto.randomUUID();
+    req.requestId = id;
+    res.setHeader('X-Request-Id', id);
+    next();
+}
+
+// ─── Security Headers (Helmet-like) ───
+
+function securityHeaders(req, res, next) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    res.removeHeader('X-Powered-By');
+    next();
+}
+
+// ─── CORS — sirf allowed origins ───
+
+function cors(req, res, next) {
+    const allowedOrigins = (env('CORS_ORIGINS') || '')
+        .split(',')
+        .map(s => s.trim().replace(/\/+$/, ''))
+        .filter(Boolean);
+
+    const frontendUrl = (env('FRONTEND_URL') || '').replace(/\/+$/, '');
+    if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
+        allowedOrigins.push(frontendUrl);
+    }
+
+    const origin = (req.headers.origin || '').replace(/\/+$/, '');
+    const isAllowed = !origin || allowedOrigins.includes(origin);
+
+    if (isAllowed && origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+    }
+
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, X-Cron-Secret');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400');
+
+    if (req.method === 'OPTIONS') {
+        return res.status(204).end();
+    }
+
+    next();
+}
+
+// ─── Rate Limiter — reusable middleware ───
+
+const rateLimitStore = new Map();
+
+function rateLimit(options = {}) {
+    const {
+        windowMs = 60000,
+        max = 100,
+        keyGenerator = (req) => req.ip,
+        message = 'Too many requests. Try again later.',
+    } = options;
+
+    return (req, res, next) => {
+        const key = `rl:${keyGenerator(req)}`;
+        const now = Date.now();
+        const record = rateLimitStore.get(key);
+
+        if (!record || now - record.startTime > windowMs) {
+            rateLimitStore.set(key, { count: 1, startTime: now });
+            res.setHeader('X-RateLimit-Limit', String(max));
+            res.setHeader('X-RateLimit-Remaining', String(max - 1));
+            res.setHeader('X-RateLimit-Reset', String(Math.ceil((now + windowMs) / 1000)));
+            return next();
+        }
+
+        record.count++;
+
+        const remaining = Math.max(0, max - record.count);
+        res.setHeader('X-RateLimit-Limit', String(max));
+        res.setHeader('X-RateLimit-Remaining', String(remaining));
+        res.setHeader('X-RateLimit-Reset', String(Math.ceil((record.startTime + windowMs) / 1000)));
+
+        if (record.count > max) {
+            const retryAfter = Math.ceil((record.startTime + windowMs - now) / 1000);
+            res.setHeader('Retry-After', String(retryAfter));
+            return err(res, message, 429);
+        }
+
+        next();
+    };
+}
+
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, record] of rateLimitStore) {
+        if (now - record.startTime > 900000) rateLimitStore.delete(key);
+    }
+}, 300000);
+
+// ─── Structured Request Logger ───
+
+function requestLogger(req, res, next) {
+    const start = Date.now();
+    const { method, originalUrl, ip } = req;
+
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        const status = res.statusCode;
+        const rid = req.requestId || '-';
+
+        if (status >= 500) {
+            logger.error(`[${rid}] ${method} ${originalUrl} ${status} ${duration}ms`);
+        } else if (status >= 400) {
+            logger.warn(`[${rid}] ${method} ${originalUrl} ${status} ${duration}ms`);
+        } else {
+            logger.info(`[${rid}] ${method} ${originalUrl} ${status} ${duration}ms`);
+        }
+    });
+
+    next();
+}
+
+// ─── Cron Secret ───
 
 function verifyCronSecret(req, res, next) {
     const secret = req.headers['x-cron-secret'] || req.body?.secret || req.query?.secret;
@@ -29,4 +158,11 @@ function verifyCronSecret(req, res, next) {
     next();
 }
 
-module.exports = { verifyCronSecret };
+module.exports = {
+    verifyCronSecret,
+    requestId,
+    securityHeaders,
+    cors,
+    rateLimit,
+    requestLogger,
+};
