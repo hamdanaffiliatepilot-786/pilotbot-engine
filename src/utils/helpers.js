@@ -90,7 +90,10 @@ async function parallelWithLimit(items, limit, fn) {
       try {
         results[i] = await fn(items[i], i);
       } catch (e) {
-        results[i] = { success: false, error: e.message };
+        results[i] = {
+          success: false,
+          error: e?.message || 'Unknown error',
+        };
       }
     }
   }
@@ -117,7 +120,11 @@ async function dedupRequest(key, fn, ttlMs = 5000) {
   }
 
   const cleanup = () => {
-    setTimeout(() => _pendingRequests.delete(key), ttlMs);
+    const timer = setTimeout(() => {
+      _pendingRequests.delete(key);
+    }, ttlMs);
+
+    timer.unref?.();
   };
 
   promise.then(cleanup, cleanup);
