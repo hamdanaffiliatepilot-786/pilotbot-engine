@@ -1,165 +1,118 @@
-const express = require("express");
-const router = express.Router();
+const { Router } = require('express');
+const { askAI } = require('../services/ai.service');
+const { sanitizeText, extractJSON } = require('../utils/sanitize');
+const { ok, err } = require('../utils/helpers');
+const cache = require('../utils/cache');
+const { CACHE_TTL, TABLES } = require('../config/constants');
+const { toolRoutes } = require('../prompts/tools');
+const logger = require('../utils/logger');
+const { supabase } = require('../config/database');
 
-const { supabase } = require("../config/database");
-const { authenticate } = require("../middleware/auth");
-const { ok, err } = require("../utils/helpers");
-const { runTaskNow } = require("../services/task.service");
+const router = Router();
 
-router.use(authenticate);
-
-function getUserEmail(req) {
-  return String(req.user?.email || "").trim().toLowerCase();
+async function trackUsage(toolPath, req) {
+  if (!supabase) return;
+  try {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
+    await supabase.from(TABLES.TOOL_USAGE).insert({
+      ip_address: ip.substring(0, 45),
+      tool_slug: toolPath,
+      created_at: new Date().toISOString(),
+    });
+  } catch {}
 }
 
-router.get("/", async (req, res) => {
+async function getUsageCount(ip) {
+  if (!supabase) return 0;
   try {
-    const email = getUserEmail(req);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const { count } = await supabase
+      .from(TABLES.TOOL_USAGE)
+      .select('*', { count: 'exact', head: true })
+      .eq('ip_address', ip.substring(0, 45))
+      .gte('created_at', today.toISOString());
+    return count || 0;
+  } catch { return 0; }
+}
 
-    if (!email) {
-      return err(res, "Unauthorized", 401);
+toolRoutes.forEach(route => {
+  router.post(`/${route.path}`, async (req, res) => {
+    const input = sanitizeText(req.body.topic || req.body.prompt || '', 5000);
+    if (!input) return err(res, 'Prompt is required', 400);
+
+    // Image tools — no AI call needed
+    if (route.type === 'image') {
+      const seed = Math.floor(Math.random() * 999999);
+      await trackUsage(route.path, req);
+      return ok(res, {
+        success: true,
+        imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(input)}?width=1024&height=1024&nologo=true&seed=${seed}`,
+      });
     }
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("email", email)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      return err(res, error.message, 400);
+    if (route.type === 'logo') {
+      const seed = Math.floor(Math.random() * 999999);
+      const styles = [
+        `minimal flat logo "${input}" white bg`,
+        `gradient badge logo "${input}"`,
+        `luxury monogram "${input}"`,
+        `icon+text logo "${input}" modern`,
+      ];
+      const selected = styles[Math.floor(Math.random() * styles.length)];
+      await trackUsage(route.path, req);
+      return ok(res, {
+        success: true,
+        imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(selected)}?width=1024&height=1024&nologo=true&seed=${seed}`,
+      });
     }
 
-    return ok(res, { tasks: data || [] });
-  } catch (error) {
-    return err(res, error.message || "Failed to load tasks", 500);
-  }
+    // Cache check
+    const cacheKey = `tool:${route.path}:${input}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      logger.debug('Cache hit:', route.path);
+      await trackUsage(route.path, req);
+      const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
+      const usesToday = await getUsageCount(ip);
+      return ok(res, { ...cached, usesToday });
+    }
+
+    // AI call with timing
+    const aiTimer = logger.startTimer(`ai:tool:${route.path}`);
+    const result = await askAI(route.prompt(input));
+    const aiMs = logger.endTimer(aiTimer);
+
+    if (!result) {
+      logger.warn(`Tool ${route.path} AI failed after ${aiMs}ms`);
+      return err(res, 'AI generation failed. Please try again.', 503);
+    }
+
+    await trackUsage(route.path, req);
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
+    const usesToday = await getUsageCount(ip);
+
+    // JSON parse with validation
+    const trimmed = result.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      const parsed = extractJSON(result);
+      if (parsed && typeof parsed === 'object') {
+        const response = { success: true, data: parsed, usesToday };
+        cache.set(cacheKey, response, CACHE_TTL.TOOL_RESULT);
+        return ok(res, response);
+      }
+    }
+
+    const response = { success: true, article: result, usesToday };
+    cache.set(cacheKey, response, CACHE_TTL.TOOL_RESULT);
+    return ok(res, response);
+  });
 });
 
-router.post("/", async (req, res) => {
-  try {
-    const email = getUserEmail(req);
-
-    const {
-      title,
-      agentId,
-      prompt,
-      scheduleType = "manual",
-      requiresApproval = false
-    } = req.body || {};
-
-    if (!email) {
-      return err(res, "Unauthorized", 401);
-    }
-
-    if (!title?.trim() || !agentId?.trim() || !prompt?.trim()) {
-      return err(res, "Title, agent and prompt are required", 400);
-    }
-
-    const { data, error } = await supabase
-      .from("tasks")
-      .insert([
-        {
-          email,
-          title: title.trim(),
-          agent_id: agentId.trim(),
-          prompt: prompt.trim(),
-          schedule_type: scheduleType,
-          requires_approval: Boolean(requiresApproval),
-          approved: !Boolean(requiresApproval),
-          status: "active"
-        }
-      ])
-      .select()
-      .single();
-
-    if (error) {
-      return err(res, error.message, 400);
-    }
-
-    return ok(res, { task: data });
-  } catch (error) {
-    return err(res, error.message || "Failed to create task", 500);
-  }
-});
-
-router.post("/:id/approve", async (req, res) => {
-  try {
-    const email = getUserEmail(req);
-    const taskId = req.params.id;
-    const approved = Boolean(req.body?.approved);
-
-    const { data, error } = await supabase
-      .from("tasks")
-      .update({
-        approved,
-        status: approved ? "active" : "paused",
-        updated_at: new Date().toISOString()
-      })
-      .eq("id", taskId)
-      .eq("email", email)
-      .select()
-      .single();
-
-    if (error || !data) {
-      return err(res, error?.message || "Task not found", 404);
-    }
-
-    return ok(res, { task: data });
-  } catch (error) {
-    return err(res, error.message || "Failed to update task", 500);
-  }
-});
-
-router.post("/:id/run", async (req, res) => {
-  try {
-    const email = getUserEmail(req);
-    const taskId = req.params.id;
-
-    const { data: task, error: taskError } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("id", taskId)
-      .eq("email", email)
-      .single();
-
-    if (taskError || !task) {
-      return err(res, taskError?.message || "Task not found", 404);
-    }
-
-    if (task.requires_approval && !task.approved) {
-      return err(res, "This task needs approval before running", 400);
-    }
-
-    const result = await runTaskNow(task);
-
-    return ok(res, {
-      task,
-      result
-    });
-  } catch (error) {
-    return err(res, error.message || "Task failed", 500);
-  }
-});
-
-router.get("/outputs", async (req, res) => {
-  try {
-    const email = getUserEmail(req);
-
-    const { data, error } = await supabase
-      .from("task_outputs")
-      .select("*")
-      .eq("email", email)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      return err(res, error.message, 400);
-    }
-
-    return ok(res, { outputs: data || [] });
-  } catch (error) {
-    return err(res, error.message || "Failed to load outputs", 500);
-  }
+router.get('/usage-count', async (req, res) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || 'unknown';
+  const count = await getUsageCount(ip);
+  ok(res, { success: true, usesToday: count, limit: 5 });
 });
 
 module.exports = router;
