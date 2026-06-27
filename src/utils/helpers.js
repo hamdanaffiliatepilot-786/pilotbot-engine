@@ -1,7 +1,10 @@
 const { DEFAULT_PAGE, DEFAULT_LIMIT, MAX_LIMIT } = require('../config/constants');
 
 function toIso(date) {
-  return new Date(date).toISOString();
+  if (date === null || date === undefined) return null;
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 function normalizeOrigin(url) {
@@ -10,16 +13,20 @@ function normalizeOrigin(url) {
 
 function computeNextRun(scheduleType, fromDate = new Date()) {
   const now = new Date(fromDate);
+  if (isNaN(now.getTime())) return null;
+
   if (scheduleType === 'daily') {
     const next = new Date(now);
     next.setDate(next.getDate() + 1);
     return toIso(next);
   }
+
   if (scheduleType === 'weekly') {
     const next = new Date(now);
     next.setDate(next.getDate() + 7);
     return toIso(next);
   }
+
   return null;
 }
 
@@ -36,14 +43,12 @@ function err(res, msg, code = 500) {
   });
 }
 
-// ─── Centralized Error Message Extractor ───
 function getErrorMessage(error, fallback = 'An unexpected error occurred') {
   const message = String(error?.message || error || '');
   if (!message || message.length > 300) return fallback;
   return message;
 }
 
-// ─── Pagination ───
 function parsePagination(query) {
   let page = parseInt(query.page, 10);
   let limit = parseInt(query.limit, 10);
@@ -58,7 +63,8 @@ function parsePagination(query) {
 }
 
 function paginatedResponse(data, page, limit, total) {
-  const totalPages = Math.ceil(total / limit);
+  const safeLimit = Math.max(1, limit);
+  const totalPages = Math.ceil(total / safeLimit);
   return {
     data,
     pagination: {
@@ -72,8 +78,9 @@ function paginatedResponse(data, page, limit, total) {
   };
 }
 
-// ─── Parallel with Limit ───
 async function parallelWithLimit(items, limit, fn) {
+  if (!items || items.length === 0) return [];
+
   const results = new Array(items.length);
   let index = 0;
 
@@ -88,12 +95,12 @@ async function parallelWithLimit(items, limit, fn) {
     }
   }
 
-  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  const workerCount = Math.min(Math.max(1, limit), items.length);
+  const workers = Array.from({ length: workerCount }, () => worker());
   await Promise.all(workers);
   return results;
 }
 
-// ─── Request Deduplication ───
 const _pendingRequests = new Map();
 
 async function dedupRequest(key, fn, ttlMs = 5000) {
@@ -102,9 +109,18 @@ async function dedupRequest(key, fn, ttlMs = 5000) {
     return existing.promise;
   }
 
-  const promise = fn().finally(() => {
+  let promise;
+  try {
+    promise = fn();
+  } catch (e) {
+    promise = Promise.reject(e);
+  }
+
+  const cleanup = () => {
     setTimeout(() => _pendingRequests.delete(key), ttlMs);
-  });
+  };
+
+  promise.then(cleanup, cleanup);
 
   _pendingRequests.set(key, { promise, createdAt: Date.now() });
   return promise;
