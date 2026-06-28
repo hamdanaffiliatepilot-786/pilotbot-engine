@@ -1,3 +1,4 @@
+// src/services/task.service.js
 const { supabase } = require('../config/database');
 const { askAI } = require('./ai.service');
 const { sanitizeText, sanitizeHTML } = require('../utils/sanitize');
@@ -53,7 +54,6 @@ async function saveOutput(task, output) {
 async function executeAutomationTask(task) {
   if (!supabase) return { success: false, error: 'Database not configured' };
 
-  // FIXED: Use client_profiles (consistent with routes/client.js)
   const timerDB = logger.startTimer('db:task:fetch-setup');
   const { data: setup } = await supabase
     .from(TABLES.CLIENT_PROFILES)
@@ -139,4 +139,9 @@ async function runDueTasks(limit = 10) {
   return { success: true, processed: tasks.length, succeeded };
 }
 
-module.exports = { executeAutomationTask, runDueTasks };
+// ← FIX: Added runTaskNow export (routes/tasks.js /:id/run mein use hota hai)
+async function runTaskNow(task) {
+  return executeAutomationTask(task);
+}
+
+module.exports = { executeAutomationTask, runDueTasks, runTaskNow };
