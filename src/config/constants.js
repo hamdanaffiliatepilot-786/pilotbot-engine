@@ -1,4 +1,4 @@
-// ─── Shared Constants ───
+// src/config/constants.js
 module.exports = {
   // Pagination
   DEFAULT_PAGE: 1,
@@ -48,6 +48,7 @@ module.exports = {
     TOOL_SUBSCRIPTIONS: 'tool_subscriptions',
     TRANSACTIONS: 'transactions',
     AUTOMATION_TASKS: 'automation_tasks',
+    TASKS: 'automation_tasks',          // ← FIX: alias added
     TASK_OUTPUTS: 'task_outputs',
     TASK_LOGS: 'task_logs',
     GENERATED_OUTPUTS: 'generated_outputs',
