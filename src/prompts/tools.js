@@ -52,6 +52,16 @@ const toolRoutes = [
         prompt: (t) => `Convert these meeting notes into a structured format: "${t}". OUTPUT JSON: {"meeting_title":"...","date":"...","attendees":["..."],"key_decisions":["..."],"action_items":[{"task":"...","assignee":"...","deadline":"..."}],"summary":"..."} No markdown.`
     },
 
+    // === NEW: PODCAST & VIDEO ===
+    {
+        path: 'podcast-show-notes',
+        prompt: (t) => `Generate professional podcast show notes for: "${t}". Include: catchy title, episode summary (100 words), 5 key takeaways with timestamps, guest bio, 3 discussion questions, CTA for reviews. OUTPUT JSON: {"title":"...","summary":"...","takeaways":["..."],"guest_bio":"...","questions":["..."],"cta":"..."} No markdown.`
+    },
+    {
+        path: 'video-hook-generator',
+        prompt: (t) => `Generate 10 viral video hooks for: "${t}". Each hook must stop the scroll within 3 seconds. Include opening line, visual suggestion, and hook type (question, story, controversy, etc). OUTPUT JSON: {"hooks":[{"line":"...","visual":"...","type":"..."}]} No markdown.`
+    },
+
     // === DESIGN & MEDIA ===
     {
         path: 'youtube-thumbnail-prompt',
@@ -92,6 +102,24 @@ const toolRoutes = [
         prompt: (t) => `Repurpose "${t}" into 5 formats: Twitter thread, LinkedIn post, newsletter section, Instagram caption, YouTube hook. Platform-optimized. OUTPUT JSON: {"formats":[{"type":"...","content":"..."}]} No markdown.`
     },
 
+    // === NEW: MARKETING ANALYTICS ===
+    {
+        path: 'marketing-analytics',
+        prompt: (t) => `Analyze this marketing data and provide actionable insights: "${t}". Include: key metrics interpretation, 3 growth opportunities, 2 risk areas, budget allocation recommendations, next 30-day action plan. OUTPUT JSON: {"insights":"...","opportunities":["..."],"risks":["..."],"budget":"...","actions":["..."]} No markdown.`
+    },
+    {
+        path: 'ab-test-ideas',
+        prompt: (t) => `Generate 10 A/B test ideas for: "${t}". Each test should have: hypothesis, control version, variant description, primary metric to measure, expected lift, and implementation complexity. OUTPUT JSON: {"tests":[{"hypothesis":"...","control":"...","variant":"...","metric":"...","lift":"...","complexity":"..."}]} No markdown.`
+    },
+    {
+        path: 'customer-persona',
+        prompt: (t) => `Create detailed customer personas for: "${t}". Generate 3 personas with: name, age, job title, goals, pain points, buying triggers, preferred channels, objections, and decision criteria. OUTPUT JSON: {"personas":[{"name":"...","age":"...","job":"...","goals":["..."],"pain_points":["..."],"triggers":["..."],"channels":["..."],"objections":["..."],"criteria":["..."]}]} No markdown.`
+    },
+    {
+        path: 'value-proposition',
+        prompt: (t) => `Create a compelling value proposition for: "${t}". Include: main headline, subheadline, 3 benefit statements, differentiation from competitors, and proof points. OUTPUT JSON: {"headline":"...","subheadline":"...","benefits":["..."],"differentiation":"...","proof":["..."]} No markdown.`
+    },
+
     // === BUSINESS & LEGAL ===
     {
         path: 'business-name-generator',
@@ -118,6 +146,24 @@ const toolRoutes = [
         prompt: (t) => `Write complete Terms of Service for ${t}. 10 sections. Legal tone. OUTPUT ONLY HTML.`
     },
 
+    // === NEW: FINANCE & BUSINESS ===
+    {
+        path: 'pricing-strategy',
+        prompt: (t) => `Create a pricing strategy for: "${t}". Include: market analysis, recommended pricing model, 3-tier pricing table with features, psychological pricing tactics, and competitive positioning. OUTPUT JSON: {"analysis":"...","model":"...","tiers":[{"name":"...","price":"...","features":["..."]}],"tactics":["..."],"positioning":"..."} No markdown.`
+    },
+    {
+        path: 'pitch-deck',
+        prompt: (t) => `Create an investor pitch deck outline for: "${t}". 12 slides: Title, Problem, Solution, Market Size, Product, Business Model, Traction, Competition, Team, Financials, Ask, Contact. Each with key talking points. OUTPUT JSON: {"slides":[{"title":"...","points":["..."]}]} No markdown.`
+    },
+    {
+        path: 'job-description',
+        prompt: (t) => `Write a detailed job description for: "${t}". Include: job title, department, reports to, summary, responsibilities (8-10), requirements, benefits, growth path, and application instructions. OUTPUT JSON: {"title":"...","department":"...","summary":"...","responsibilities":["..."],"requirements":["..."],"benefits":["..."],"growth":"...","apply":"..."} No markdown.`
+    },
+    {
+        path: 'swot-analysis',
+        prompt: (t) => `Conduct a SWOT analysis for: "${t}". Identify 5 items for each: Strengths, Weaknesses, Opportunities, Threats. Include strategic recommendations based on the analysis. OUTPUT JSON: {"strengths":["..."],"weaknesses":["..."],"opportunities":["..."],"threats":["..."],"recommendations":["..."]} No markdown.`
+    },
+
     // === SOCIAL & PERSONAL ===
     {
         path: 'social-bio-generator',
@@ -132,6 +178,16 @@ const toolRoutes = [
         prompt: (t) => `Write professional responses for review: "${t}". Generate responses for 1-star, 3-star, and 5-star reviews. Each empathetic and brand-positive. OUTPUT JSON: {"responses":[{"stars":1,"response":"..."},{"stars":3,"response":"..."},{"stars":5,"response":"..."}]} No markdown.`
     },
 
+    // === NEW: LINKEDIN & NETWORKING ===
+    {
+        path: 'linkedin-post',
+        prompt: (t) => `Write a viral LinkedIn post about: "${t}". Include: hook (first line that stops scroll), personal story or insight, 3 actionable tips, engaging question, and relevant hashtags. Keep it conversational and authentic. OUTPUT JSON: {"hook":"...","story":"...","tips":["..."],"question":"...","hashtags":["..."]} No markdown.`
+    },
+    {
+        path: 'cold-email',
+        prompt: (t) => `Write a cold email for: "${t}". Include: subject line (under 50 chars), personalized opening, value proposition, social proof, clear CTA, and PS line. Keep it under 150 words. OUTPUT JSON: {"subject":"...","opening":"...","value":"...","proof":"...","cta":"...","ps":"..."} No markdown.`
+    },
+
     // === PRODUCTIVITY ===
     {
         path: 'ai-translator',
@@ -144,6 +200,16 @@ const toolRoutes = [
     {
         path: 'website-roaster',
         prompt: (t) => `You are a savage, hilarious website reviewer. Roast this website: "${t}". FORMAT STRICTLY AS:\n🔥 FIRST IMPRESSION (1-2 sentences)\n🎭 DESIGN ROAST\n📝 CONTENT ROAST\n🔍 SEO ROAST\n⚖️ THE VERDICT\n💡 ACTUALLY USEFUL ADVICE (3 bullet points)\nBe sarcastic and funny. Use emojis. Under 300 words. OUTPUT CLEAN TEXT.`
+    },
+
+    // === NEW: PRESS & PR ===
+    {
+        path: 'press-release',
+        prompt: (t) => `Write a professional press release for: "${t}". Include: FOR IMMEDIATE RELEASE, headline, dateline, introduction paragraph (who, what, when, where, why), 2 body paragraphs with quotes, boilerplate, and contact info. Follow AP style. OUTPUT CLEAN TEXT.`
+    },
+    {
+        path: 'crisis-response',
+        prompt: (t) => `Write a crisis communication response for: "${t}". Include: acknowledgment statement, responsibility acceptance (if applicable), action plan, timeline, and commitment to improvement. Professional, empathetic, and clear. OUTPUT JSON: {"acknowledgment":"...","responsibility":"...","action":"...","timeline":"...","commitment":"..."} No markdown.`
     },
 ];
 

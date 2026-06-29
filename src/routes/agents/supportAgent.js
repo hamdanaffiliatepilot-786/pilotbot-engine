@@ -4,10 +4,11 @@ const { runAgent } = require("../../services/agentRunner");
 const prompts = require("../../prompts");
 const { sanitizeText } = require("../../utils/sanitize");
 const { err } = require("../../utils/helpers");
+const { optionalAuth } = require("../../middleware/auth");
 
 const router = Router();
 
-router.post("/support-agent", async (req, res) => {
+router.post("/support-agent", optionalAuth, async (req, res) => {
 
     const question = sanitizeText(req.body.question || "", 2000);
     const orderNumber = sanitizeText(req.body.orderNumber || "", 100);

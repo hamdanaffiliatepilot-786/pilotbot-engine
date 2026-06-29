@@ -3,10 +3,11 @@ const { runAgent } = require("../../services/agentRunner");
 const prompts = require("../../prompts");
 const { sanitizeText } = require("../../utils/sanitize");
 const { err } = require("../../utils/helpers");
+const { optionalAuth } = require("../../middleware/auth");
 
 const router = Router();
 
-router.post("/linkedin-growth-hacker", async (req, res) => {
+router.post("/linkedin-growth-hacker", optionalAuth, async (req, res) => {
 
     const task = sanitizeText(
         req.body.prompt || req.body.question || "",

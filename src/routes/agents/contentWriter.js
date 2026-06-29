@@ -5,13 +5,14 @@ const { sanitizeText } = require("../../utils/sanitize");
 const { err } = require("../../utils/helpers");
 const { CACHE_TTL } = require("../../config/constants");
 const { env } = require("../../config/env");
+const { optionalAuth } = require("../../middleware/auth");
 
 const router = Router();
 
 const WEBSITE_URL =
     env("WEBSITE_URL") || "https://pilotstaff.com";
 
-router.post("/content-writer", async (req, res) => {
+router.post("/content-writer", optionalAuth, async (req, res) => {
 
     const topic = sanitizeText(req.body.topic || "", 500);
     const tone = sanitizeText(req.body.tone || "professional", 100);

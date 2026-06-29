@@ -4,10 +4,11 @@ const prompts = require("../../prompts");
 const { sanitizeText } = require("../../utils/sanitize");
 const { err } = require("../../utils/helpers");
 const { CACHE_TTL } = require("../../config/constants");
+const { optionalAuth } = require("../../middleware/auth");
 
 const router = Router();
 
-router.post("/video-scriptwriter", async (req, res) => {
+router.post("/video-scriptwriter", optionalAuth, async (req, res) => {
 
     const topic = sanitizeText(req.body.topic || "", 500);
     const platform = sanitizeText(req.body.platform || "youtube", 50);

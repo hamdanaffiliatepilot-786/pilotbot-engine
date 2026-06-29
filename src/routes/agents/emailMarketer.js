@@ -4,10 +4,11 @@ const prompts = require("../../prompts");
 const { sanitizeText, extractJSON } = require("../../utils/sanitize");
 const { err } = require("../../utils/helpers");
 const { CACHE_TTL } = require("../../config/constants");
+const { optionalAuth } = require("../../middleware/auth");
 
 const router = Router();
 
-router.post("/email-marketer", async (req, res) => {
+router.post("/email-marketer", optionalAuth, async (req, res) => {
 
     const product = sanitizeText(req.body.product || "", 500);
     const audience = sanitizeText(req.body.audience || "", 500);

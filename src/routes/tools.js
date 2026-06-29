@@ -7,6 +7,7 @@ const { CACHE_TTL, TABLES } = require('../config/constants');
 const { toolRoutes } = require('../prompts/tools');
 const logger = require('../utils/logger');
 const { supabase } = require('../config/database');
+const { optionalAuth } = require('../middleware/auth');
 
 const router = Router();
 
@@ -37,7 +38,7 @@ async function getUsageCount(ip) {
 }
 
 toolRoutes.forEach(route => {
-  router.post(`/${route.path}`, async (req, res) => {
+  router.post(`/${route.path}`, optionalAuth, async (req, res) => {
     const input = sanitizeText(req.body.topic || req.body.prompt || '', 5000);
     if (!input) return err(res, 'Prompt is required', 400);
 
@@ -67,8 +68,9 @@ toolRoutes.forEach(route => {
       });
     }
 
-    // Cache check
-    const cacheKey = `tool:${route.path}:${input}`;
+    // Cache check - user-scoped for privacy
+    const userId = req.user?.id || req.ip;
+    const cacheKey = `tool:${userId}:${route.path}:${input.substring(0, 100)}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       logger.debug('Cache hit:', route.path);

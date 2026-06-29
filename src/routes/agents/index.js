@@ -11,6 +11,11 @@ const videoScriptwriter = require("./videoScriptwriter");
 const conversionFunnel = require("./conversionFunnel");
 const reputationManager = require("./reputationManager");
 const linkedinGrowth = require("./linkedinGrowth");
+const financeAgent = require("./financeAgent");
+const legalAgent = require("./legalAgent");
+const hrAgent = require("./hrAgent");
+const marketingAgent = require("./marketingAgent");
+const growthAgent = require("./growthAgent");
 
 const router = Router();
 
@@ -25,5 +30,10 @@ router.use(videoScriptwriter);
 router.use(conversionFunnel);
 router.use(reputationManager);
 router.use(linkedinGrowth);
+router.use(financeAgent);
+router.use(legalAgent);
+router.use(hrAgent);
+router.use(marketingAgent);
+router.use(growthAgent);
 
 module.exports = router;

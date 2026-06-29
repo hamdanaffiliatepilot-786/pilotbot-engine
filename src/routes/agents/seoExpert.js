@@ -4,10 +4,11 @@ const prompts = require("../../prompts");
 const { sanitizeText } = require("../../utils/sanitize");
 const { err } = require("../../utils/helpers");
 const { CACHE_TTL } = require("../../config/constants");
+const { optionalAuth } = require("../../middleware/auth");
 
 const router = Router();
 
-router.post("/seo-expert", async (req, res) => {
+router.post("/seo-expert", optionalAuth, async (req, res) => {
 
     const url = sanitizeText(req.body.url || "", 500);
     const niche = sanitizeText(req.body.niche || "", 500);

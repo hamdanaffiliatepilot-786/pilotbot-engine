@@ -4,10 +4,11 @@ const prompts = require("../../prompts");
 const { sanitizeText, extractJSON } = require("../../utils/sanitize");
 const { err } = require("../../utils/helpers");
 const { CACHE_TTL } = require("../../config/constants");
+const { optionalAuth } = require("../../middleware/auth");
 
 const router = Router();
 
-router.post("/social-staff", async (req, res) => {
+router.post("/social-staff", optionalAuth, async (req, res) => {
 
     const niche = sanitizeText(req.body.niche || "", 500);
     const days = Math.min(Math.max(parseInt(req.body.days) || 7, 1), 30);

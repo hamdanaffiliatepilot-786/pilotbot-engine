@@ -23,13 +23,14 @@ function securityHeaders(req, res, next) {
 }
 
 function cors(req, res, next) {
+  const isDev = process.env.NODE_ENV === 'development';
   const configuredOrigins = [
     env('FRONTEND_URL'),
     ...env('FRONTEND_URLS')
       .split(',')
       .map((u) => u.trim().replace(/\/+$/, ''))
       .filter(Boolean),
-    'http://localhost:3000',
+    ...(isDev ? ['http://localhost:3000'] : []),
   ].filter(Boolean);
 
   const origin = (req.headers.origin || '').trim().replace(/\/+$/, '');
