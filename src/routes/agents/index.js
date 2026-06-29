@@ -16,6 +16,7 @@ const legalAgent = require("./legalAgent");
 const hrAgent = require("./hrAgent");
 const marketingAgent = require("./marketingAgent");
 const growthAgent = require("./growthAgent");
+const newAgents = require("./newAgents");
 
 const router = Router();
 
@@ -35,5 +36,6 @@ router.use(legalAgent);
 router.use(hrAgent);
 router.use(marketingAgent);
 router.use(growthAgent);
+router.use(newAgents);
 
 module.exports = router;

@@ -2,215 +2,309 @@ const { env } = require('../config/env');
 const WEBSITE_URL = env('WEBSITE_URL') || 'https://pilotstaff.com';
 
 const toolRoutes = [
-    // === VIRAL TOOLS ===
-    {
-        path: 'ai-humanizer',
-        prompt: (t) => `You are an expert AI Humanizer. Rewrite the following text to sound 100% human-written. Remove AI cliches like "delve", "tapestry", "moreover", "furthermore", "in conclusion", "landscape", "realm", "testament", "pivotal", "seamless", "navigating the complexities". Use varied sentence lengths. Add slight imperfections in flow that humans naturally have. Use conversational transitions. Keep the exact same meaning and facts. Do NOT add new information. Do NOT add hashtags or bullet points unless the original had them.\n\nText to humanize: "${t}"\n\nOUTPUT ONLY THE HUMANIZED TEXT. No explanations.`
-    },
-    {
-        path: 'seo-audit-checker',
-        prompt: (t) => `Act as a strict Technical SEO Auditor with 15 years of experience. Analyze this website/URL: "${t}". Give a realistic score out of 100. Format STRICTLY as JSON: {"score": 85, "grade": "B", "summary": "One line summary", "critical_issues": [{"issue": "Exact issue name", "impact": "High", "fix": "Exact step to fix"}], "warnings": [{"issue": "Exact issue name", "impact": "Medium", "fix": "Exact step to fix"}], "passed": ["Check name that passed"], "top_recommendation": "The single most important thing to fix first"} Give at least 3 critical issues, 3 warnings, and 3 passed checks. OUTPUT ONLY JSON.`
-    },
-    {
-        path: 'youtube-to-blog',
-        prompt: (t) => `Convert this YouTube video transcript/content into a highly engaging, SEO-optimized blog post: "${t}". Requirements: 1. Write a catchy H1 title with primary keyword. 2. Write a 150-char meta description. 3. Break into 5-6 H2 sections with engaging subheadings. 4. Remove all filler words. 5. Add bullet points for key takeaways. 6. Include internal link: <a href="${WEBSITE_URL}/tools" style="color:#2563eb;font-weight:600;">free AI tools</a>. 7. Add conclusion with CTA. OUTPUT ONLY HTML.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 1: VIRAL & TRENDING TOOLS
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'ai-humanizer', prompt: (t) => `You are an expert AI Humanizer. Rewrite the following text to sound 100% human-written. Remove AI cliches like "delve", "tapestry", "moreover", "furthermore", "in conclusion", "landscape", "realm", "testament", "pivotal", "seamless", "navigating the complexities", "unlock", "harness", "leverage", "empower", "revolutionize". Use varied sentence lengths. Add slight imperfections in flow that humans naturally have. Use conversational transitions. Keep the exact same meaning and facts. Do NOT add new information.\n\nText to humanize: "${t}"\n\nOUTPUT ONLY THE HUMANIZED TEXT. No explanations.` },
+  { path: 'seo-audit-checker', prompt: (t) => `Act as a strict Technical SEO Auditor with 15 years of experience. Analyze this website/URL: "${t}". Give a realistic score out of 100. Format STRICTLY as JSON: {"score": 85, "grade": "B", "summary": "One line summary", "critical_issues": [{"issue": "Exact issue name", "impact": "High", "fix": "Exact step to fix"}], "warnings": [{"issue": "Exact issue name", "impact": "Medium", "fix": "Exact step to fix"}], "passed": ["Check name that passed"], "top_recommendation": "The single most important thing to fix first"} Give at least 3 critical issues, 3 warnings, and 3 passed checks. OUTPUT ONLY JSON.` },
+  { path: 'youtube-to-blog', prompt: (t) => `Convert this YouTube video transcript/content into a highly engaging, SEO-optimized blog post: "${t}". Requirements: 1. Write a catchy H1 title with primary keyword. 2. Write a 150-char meta description. 3. Break into 5-6 H2 sections with engaging subheadings. 4. Remove all filler words. 5. Add bullet points for key takeaways. 6. Include internal link: <a href="${WEBSITE_URL}/tools" style="color:#2563eb;font-weight:600;">free AI tools</a>. 7. Add conclusion with CTA. OUTPUT ONLY HTML.` },
+  { path: 'website-roaster', prompt: (t) => `You are a savage, hilarious website reviewer. Roast this website: "${t}". FORMAT STRICTLY AS:\n🔥 FIRST IMPRESSION (1-2 sentences)\n🎭 DESIGN ROAST\n📝 CONTENT ROAST\n🔍 SEO ROAST\n⚖️ THE VERDICT\n💡 ACTUALLY USEFUL ADVICE (3 bullet points)\nBe sarcastic and funny. Use emojis. Under 300 words. OUTPUT CLEAN TEXT.` },
 
-    // === CONTENT CREATION ===
-    {
-        path: 'ai-website-builder',
-        prompt: (t) => `Create a COMPLETE single-page website for "${t}". Inline CSS only. Include: sticky navbar with "PilotStaff" logo, hero with gradient and CTA, 6 feature cards in grid, how-it-works 3 steps, 3 testimonials with stars, pricing table 3 plans (Free/$0, Pro/$29, Enterprise/$99) with Pro highlighted, FAQ accordion, footer. Modern, responsive. OUTPUT ONLY HTML.`
-    },
-    {
-        path: 'blog-writer-free',
-        prompt: (t) => `Write a 1500+ word SEO blog about "${t}". H1 with keyword. First 155 chars as meta description. 5-6 H2 sections. Short paragraphs. Bullet lists. Include: <a href="${WEBSITE_URL}/tools" style="color:#2563eb;font-weight:600;">free AI tools</a> and <a href="${WEBSITE_URL}/tools/ai-blog-writer" style="color:#2563eb;font-weight:600;">AI blog writer</a>. Conclusion with CTA. OUTPUT ONLY HTML.`
-    },
-    { path: 'image-generator', type: 'image' },
-    { path: 'logo-maker', type: 'logo' },
-    {
-        path: 'paragraph-rewriter',
-        prompt: (t) => `Rewrite this paragraph to be more engaging, professional, and readable. Improve vocabulary and flow while keeping ALL original facts and meaning. Do NOT add new information. Make it sound human-written, not AI-generated.\n\nParagraph: "${t}"\n\nOUTPUT ONLY THE REWRITTEN PARAGRAPH. No explanations.`
-    },
-    {
-        path: 'ad-copy-generator',
-        prompt: (t) => `Generate 5 ad copies for "${t}". 2 Facebook, 2 Google, 1 Instagram. Each with headline and body. Use AIDA framework. OUTPUT JSON: {"copy":[{"platform":"facebook","headline":"...","body":"..."}]} No markdown.`
-    },
-    {
-        path: 'email-writer',
-        prompt: (t) => `Write 3 emails for "${t}". Cold outreach, follow-up, newsletter. Each with subject line under 50 chars. OUTPUT JSON: {"emails":[{"type":"cold","subject":"...","body":"..."}]} No markdown.`
-    },
-    {
-        path: 'landing-page-copywriter',
-        prompt: (t) => `Write 3 landing page copy variations for "${t}" using AIDA framework. Each with headline, subheadline, CTA, benefits, social proof. OUTPUT JSON: {"copy":[{"headline":"...","subheadline":"...","cta":"...","body":"..."}]} No markdown.`
-    },
-    {
-        path: 'ai-code-generator',
-        prompt: (t) => `Generate code for: "${t}". Include working code, explanation, and usage example. OUTPUT JSON: {"code":"...","explanation":"...","usage":"..."} No markdown.`
-    },
-    {
-        path: 'meeting-notes-generator',
-        prompt: (t) => `Convert these meeting notes into a structured format: "${t}". OUTPUT JSON: {"meeting_title":"...","date":"...","attendees":["..."],"key_decisions":["..."],"action_items":[{"task":"...","assignee":"...","deadline":"..."}],"summary":"..."} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 2: CONTENT CREATION (30+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'ai-website-builder', prompt: (t) => `Create a COMPLETE single-page website for "${t}". Inline CSS only. Include: sticky navbar with "PilotStaff" logo, hero with gradient and CTA, 6 feature cards in grid, how-it-works 3 steps, 3 testimonials with stars, pricing table 3 plans (Free/$0, Pro/$29, Enterprise/$99) with Pro highlighted, FAQ accordion, footer. Modern, responsive. OUTPUT ONLY HTML.` },
+  { path: 'blog-writer-free', prompt: (t) => `Write a 1500+ word SEO blog about "${t}". H1 with keyword. First 155 chars as meta description. 5-6 H2 sections. Short paragraphs. Bullet lists. Include: <a href="${WEBSITE_URL}/tools" style="color:#2563eb;font-weight:600;">free AI tools</a>. Conclusion with CTA. OUTPUT ONLY HTML.` },
+  { path: 'paragraph-rewriter', prompt: (t) => `Rewrite this paragraph to be more engaging, professional, and readable. Improve vocabulary and flow while keeping ALL original facts and meaning. Do NOT add new information. Make it sound human-written.\n\nParagraph: "${t}"\n\nOUTPUT ONLY THE REWRITTEN PARAGRAPH. No explanations.` },
+  { path: 'ad-copy-generator', prompt: (t) => `Generate 5 ad copies for "${t}". 2 Facebook, 2 Google, 1 Instagram. Each with headline and body. Use AIDA framework. OUTPUT JSON: {"copy":[{"platform":"facebook","headline":"...","body":"..."}]}` },
+  { path: 'email-writer', prompt: (t) => `Write 3 emails for "${t}". Cold outreach, follow-up, newsletter. Each with subject line under 50 chars. OUTPUT JSON: {"emails":[{"type":"cold","subject":"...","body":"..."}]}` },
+  { path: 'landing-page-copywriter', prompt: (t) => `Write 3 landing page copy variations for "${t}" using AIDA framework. Each with headline, subheadline, CTA, benefits, social proof. OUTPUT JSON: {"copy":[{"headline":"...","subheadline":"...","cta":"...","body":"..."}]}` },
+  { path: 'ai-code-generator', prompt: (t) => `Generate code for: "${t}". Include working code, explanation, and usage example. OUTPUT JSON: {"code":"...","explanation":"...","usage":"..."}` },
+  { path: 'meeting-notes-generator', prompt: (t) => `Convert these meeting notes into a structured format: "${t}". OUTPUT JSON: {"meeting_title":"...","date":"...","attendees":["..."],"key_decisions":["..."],"action_items":[{"task":"...","assignee":"...","deadline":"..."}],"summary":"..."}` },
+  { path: 'podcast-show-notes', prompt: (t) => `Generate professional podcast show notes for: "${t}". Include: catchy title, episode summary (100 words), 5 key takeaways with timestamps, guest bio, 3 discussion questions, CTA for reviews. OUTPUT JSON: {"title":"...","summary":"...","takeaways":["..."],"guest_bio":"...","questions":["..."],"cta":"..."}` },
+  { path: 'video-hook-generator', prompt: (t) => `Generate 10 viral video hooks for: "${t}". Each hook must stop the scroll within 3 seconds. Include opening line, visual suggestion, and hook type (question, story, controversy, etc). OUTPUT JSON: {"hooks":[{"line":"...","visual":"...","type":"..."}]}` },
+  { path: 'press-release', prompt: (t) => `Write a professional press release for: "${t}". Include: FOR IMMEDIATE RELEASE, headline, dateline, introduction paragraph (who, what, when, where, why), 2 body paragraphs with quotes, boilerplate, and contact info. Follow AP style. OUTPUT CLEAN TEXT.` },
+  { path: 'story-writer', prompt: (t) => `Write a compelling short story about: "${t}". Include: engaging opening, character development, conflict, resolution, and theme. 500-800 words. OUTPUT CLEAN TEXT.` },
+  { path: 'poem-generator', prompt: (t) => `Write a beautiful poem about: "${t}". Use vivid imagery, metaphors, and emotional depth. 4-6 stanzas. OUTPUT CLEAN TEXT.` },
+  { path: 'speech-writer', prompt: (t) => `Write a compelling speech for: "${t}". Include: powerful opening hook, 3 main points with stories/examples, emotional appeal, call to action. OUTPUT CLEAN TEXT.` },
+  { path: 'essay-writer', prompt: (t) => `Write a well-structured essay on: "${t}". Include: thesis statement, introduction, 3 body paragraphs with evidence, counterargument, conclusion. OUTPUT CLEAN TEXT.` },
+  { path: 'letter-writer', prompt: (t) => `Write a professional letter for: "${t}". Include: formal salutation, clear purpose, supporting details, appropriate closing. OUTPUT CLEAN TEXT.` },
+  { path: 'memo-generator', prompt: (t) => `Write a professional business memo for: "${t}". Include: TO, FROM, DATE, SUBJECT, clear summary, bullet points, action items. OUTPUT CLEAN TEXT.` },
+  { path: 'report-generator', prompt: (t) => `Write a comprehensive business report on: "${t}". Include: executive summary, methodology, findings, recommendations, conclusion. OUTPUT CLEAN TEXT.` },
+  { path: 'proposal-writer', prompt: (t) => `Write a compelling business proposal for: "${t}". Include: problem statement, proposed solution, timeline, budget overview, team qualifications, call to action. OUTPUT CLEAN TEXT.` },
+  { path: 'white-paper-writer', prompt: (t) => `Write an authoritative white paper on: "${t}". Include: abstract, problem overview, technical solution, benefits, implementation guide, conclusion. OUTPUT CLEAN TEXT.` },
+  { path: 'case-study-writer', prompt: (t) => `Write a compelling case study for: "${t}". Include: client background, challenge, solution, implementation, results with metrics, testimonial. OUTPUT CLEAN TEXT.` },
+  { path: 'ebook-outline', prompt: (t) => `Create a comprehensive ebook outline for: "${t}". Include: title, 10 chapter titles, brief description of each chapter, target audience, key takeaways. OUTPUT JSON: {"title":"...","chapters":[{"number":1,"title":"...","description":"..."}]}` },
+  { path: 'headline-generator', prompt: (t) => `Generate 15 compelling headlines for: "${t}". Mix of formats: how-to, list, question, controversy, emotion, curiosity. OUTPUT JSON: {"headlines":["..."]}` },
+  { path: 'tagline-generator', prompt: (t) => `Generate 10 memorable taglines for: "${t}". Short, catchy, brandable. OUTPUT JSON: {"taglines":["..."]}` },
+  { path: 'slogan-generator', prompt: (t) => `Generate 10 creative slogans for: "${t}". Memorable and impactful. OUTPUT JSON: {"slogans":["..."]}` },
+  { path: 'mission-statement', prompt: (t) => `Write a compelling mission statement for: "${t}". Inspiring, clear, memorable. OUTPUT JSON: {"mission":"...","vision":"...","values":["..."]}` },
+  { path: 'brand-story', prompt: (t) => `Write a compelling brand story for: "${t}". Include: origin, struggle, transformation, purpose, values. OUTPUT CLEAN TEXT.` },
+  { path: 'script-writer', prompt: (t) => `Write a compelling script for: "${t}". Include: scene descriptions, dialogue, character actions, stage directions. OUTPUT CLEAN TEXT.` },
+  { path: 'lyric-generator', prompt: (t) => `Write song lyrics for: "${t}". Include: verses, chorus, bridge with emotional depth. OUTPUT CLEAN TEXT.` },
+  { path: 'joke-generator', prompt: (t) => `Generate 10 clean, funny jokes about: "${t}". Various joke formats. OUTPUT JSON: {"jokes":["..."]}` },
+  { path: 'riddle-generator', prompt: (t) => `Generate 10 creative riddles about: "${t}". Each with riddle and answer. OUTPUT JSON: {"riddles":[{"riddle":"...","answer":"..."}]}` },
+  { path: 'story-prompt', prompt: (t) => `Generate 10 creative writing prompts for: "${t}". Inspiring and varied. OUTPUT JSON: {"prompts":["..."]}` },
 
-    // === NEW: PODCAST & VIDEO ===
-    {
-        path: 'podcast-show-notes',
-        prompt: (t) => `Generate professional podcast show notes for: "${t}". Include: catchy title, episode summary (100 words), 5 key takeaways with timestamps, guest bio, 3 discussion questions, CTA for reviews. OUTPUT JSON: {"title":"...","summary":"...","takeaways":["..."],"guest_bio":"...","questions":["..."],"cta":"..."} No markdown.`
-    },
-    {
-        path: 'video-hook-generator',
-        prompt: (t) => `Generate 10 viral video hooks for: "${t}". Each hook must stop the scroll within 3 seconds. Include opening line, visual suggestion, and hook type (question, story, controversy, etc). OUTPUT JSON: {"hooks":[{"line":"...","visual":"...","type":"..."}]} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 3: DESIGN & MEDIA (20+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'image-generator', type: 'image' },
+  { path: 'logo-maker', type: 'logo' },
+  { path: 'youtube-thumbnail-prompt', prompt: (t) => `Generate 5 viral YouTube thumbnail concepts for: "${t}". Each with emotion, text overlay, visual description, color scheme. OUTPUT JSON: {"thumbnails":[{"emotion":"...","text":"...","visual":"...","colors":"..."}]}` },
+  { path: 'color-palette', prompt: (t) => `Generate 5 color palettes for: "${t}". Each with 5 hex colors and their purpose. OUTPUT JSON: {"palettes":[{"name":"...","colors":["#..."],"purpose":"..."}]}` },
+  { path: 'font-pairing', prompt: (t) => `Suggest 5 font pairings for: "${t}". Each with heading and body font. OUTPUT JSON: {"pairings":[{"heading":"...","body":"...","vibe":"..."}]}` },
+  { path: 'design-brief', prompt: (t) => `Create a comprehensive design brief for: "${t}". OUTPUT JSON: {"project_name":"...","objective":"...","target_audience":"...","deliverables":["..."],"timeline":"...","budget":"..."}` },
+  { path: 'mood-board-description', prompt: (t) => `Create a mood board description for: "${t}". Include: color palette, typography, imagery style, textures, overall vibe. OUTPUT JSON: {"colors":["..."],"fonts":["..."],"imagery":["..."],"textures":["..."],"vibe":"..."}` },
+  { path: 'instagram-grid', prompt: (t) => `Design an Instagram grid layout plan for: "${t}". 9 posts with descriptions. OUTPUT JSON: {"posts":[{"position":1,"description":"...","color":"..."}]}` },
+  { path: 'brand-style-guide', prompt: (t) => `Create a brand style guide for: "${t}". Include: colors, typography, logo usage, imagery style, voice/tone. OUTPUT CLEAN TEXT.` },
+  { path: 'ui-wireframe', prompt: (t) => `Describe a UI wireframe for: "${t}". Include: layout, components, user flow, interactions. OUTPUT CLEAN TEXT.` },
+  { path: 'app-icon-concept', prompt: (t) => `Generate 5 app icon concepts for: "${t}". Each with description, colors, and style. OUTPUT JSON: {"concepts":[{"description":"...","colors":"...","style":"..."}]}` },
+  { path: 'banner-design', prompt: (t) => `Create 5 banner design concepts for: "${t}". Web banners, social media headers. OUTPUT JSON: {"banners":[{"size":"...","concept":"...","elements":["..."]}]}` },
+  { path: 'poster-design', prompt: (t) => `Create 5 poster design concepts for: "${t}". Each with layout, colors, typography, focal point. OUTPUT JSON: {"posters":[{"theme":"...","layout":"...","colors":"..."}]}` },
+  { path: 'infographic-outline', prompt: (t) => `Create an infographic outline for: "${t}". Include: sections, data points, visual suggestions. OUTPUT JSON: {"title":"...","sections":[{"title":"...","data":"...","visual":"..."}]}` },
+  { path: 'presentation-slides', prompt: (t) => `Create presentation slide outlines for: "${t}". 10 slides with titles, bullet points, speaker notes. OUTPUT JSON: {"slides":[{"number":1,"title":"...","points":["..."],"notes":"..."}]}` },
+  { path: 'business-card-design', prompt: (t) => `Create 5 business card design concepts for: "${t}". Each with layout, colors, typography. OUTPUT JSON: {"cards":[{"layout":"...","colors":"...","elements":["..."]}]}` },
+  { path: 'brochure-outline', prompt: (t) => `Create a brochure outline for: "${t}". Tri-fold design with content sections. OUTPUT JSON: {"panels":[{"position":"front","title":"...","content":"..."}]}` },
+  { path: 'flyer-design', prompt: (t) => `Create 5 flyer design concepts for: "${t}". Each with layout, headline, colors. OUTPUT JSON: {"flyers":[{"headline":"...","layout":"...","colors":"..."}]}` },
+  { path: 'social-media-template', prompt: (t) => `Create social media template concepts for: "${t}". Instagram post, story, LinkedIn post. OUTPUT JSON: {"templates":[{"platform":"...","dimensions":"...","layout":"..."}]}` },
+  { path: 'email-template', prompt: (t) => `Create email template design for: "${t}". Newsletter, promotional, transactional. OUTPUT JSON: {"templates":[{"type":"...","layout":"...","colors":"..."}]}` },
+  { path: 'packaging-design', prompt: (t) => `Create packaging design concept for: "${t}". Include: box shape, colors, materials, typography. OUTPUT JSON: {"concept":"...","materials":"...","colors":"...","dimensions":"..."}` },
 
-    // === DESIGN & MEDIA ===
-    {
-        path: 'youtube-thumbnail-prompt',
-        prompt: (t) => `Generate 5 viral YouTube thumbnail concepts for: "${t}". Each with emotion, text overlay, visual description, color scheme. OUTPUT JSON: {"thumbnails":[{"emotion":"...","text":"...","visual":"...","colors":"..."}]} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 4: SEO & DIGITAL MARKETING (40+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'meta-tag-generator', prompt: (t) => `Generate SEO meta tags for "${t}". Title under 60 chars, description 150-155 chars, 10 keywords, og_title, og_description. OUTPUT JSON: {"title":"...","description":"...","keywords":["..."],"og_title":"...","og_description":"..."}` },
+  { path: 'youtube-seo', prompt: (t) => `Generate 5 YouTube titles (under 70 chars, high CTR) and 10 SEO tags for "${t}". OUTPUT JSON: {"titles":["..."],"tags":["..."]}` },
+  { path: 'ai-hashtag-generator', prompt: (t) => `Generate 1 engaging caption and 20 viral hashtags for "${t}". Mix small, medium, and large hashtags. OUTPUT JSON: {"caption":"...","hashtags":["#..."]}` },
+  { path: 'website-auditor', prompt: (t) => `Perform a complete SEO audit for: "${t}". Cover: technical SEO, on-page SEO, content quality, backlink profile, mobile optimization, page speed. Give specific actionable fixes with priority levels. OUTPUT CLEAN TEXT.` },
+  { path: 'competitor-analyzer', prompt: (t) => `Analyze competitor "${t}". Find: keyword gaps, content gaps, backlink opportunities, traffic sources, top performing pages, content strategy. Give actionable steps to outrank them. OUTPUT CLEAN TEXT.` },
+  { path: 'schema-generator', prompt: (t) => `Generate 4 JSON-LD schemas for "${t}": BlogPosting, Product, FAQPage, Organization. Valid structured data. OUTPUT JSON: {"schemas":[{"@type":"BlogPosting",...}]}` },
+  { path: 'content-calendar', prompt: (t) => `30-day content calendar for "${t}". Each day: topic, keyword, content type, platform. OUTPUT JSON: {"calendar":[{"day":1,"topic":"...","keyword":"...","type":"Blog","platform":"Website"}]}` },
+  { path: 'content-repurposer', prompt: (t) => `Repurpose "${t}" into 5 formats: Twitter thread, LinkedIn post, newsletter section, Instagram caption, YouTube hook. Platform-optimized. OUTPUT JSON: {"formats":[{"type":"...","content":"..."}]}` },
+  { path: 'marketing-analytics', prompt: (t) => `Analyze this marketing data and provide actionable insights: "${t}". Include: key metrics interpretation, 3 growth opportunities, 2 risk areas, budget allocation recommendations, next 30-day action plan. OUTPUT JSON: {"insights":"...","opportunities":["..."],"risks":["..."],"budget":"...","actions":["..."]}` },
+  { path: 'ab-test-ideas', prompt: (t) => `Generate 10 A/B test ideas for: "${t}". Each with: hypothesis, control, variant, metric, expected lift. OUTPUT JSON: {"tests":[{"hypothesis":"...","control":"...","variant":"...","metric":"...","lift":"..."}]}` },
+  { path: 'customer-persona', prompt: (t) => `Create detailed customer personas for: "${t}". Generate 3 personas with: name, age, job title, goals, pain points, buying triggers, preferred channels. OUTPUT JSON: {"personas":[{"name":"...","age":"...","job":"...","goals":["..."],"pain_points":["..."]}]}` },
+  { path: 'value-proposition', prompt: (t) => `Create a compelling value proposition for: "${t}". Include: headline, subheadline, 3 benefits, differentiation. OUTPUT JSON: {"headline":"...","subheadline":"...","benefits":["..."],"differentiation":"..."}` },
+  { path: 'keyword-research', prompt: (t) => `Generate 20 SEO keywords for: "${t}". Mix of head terms, long-tail, questions. Include search intent. OUTPUT JSON: {"keywords":[{"keyword":"...","intent":"...","difficulty":"..."}]}` },
+  { path: 'backlink-strategy', prompt: (t) => `Create a backlink building strategy for: "${t}". Include: outreach targets, content ideas, anchor text recommendations. OUTPUT JSON: {"strategy":"...","targets":["..."],"content_ideas":["..."]}` },
+  { path: 'local-seo', prompt: (t) => `Create local SEO strategy for: "${t}". Include: GMB optimization, local keywords, citation sources, review strategy. OUTPUT JSON: {"gmb_tips":["..."],"keywords":["..."],"citations":["..."]}` },
+  { path: 'technical-seo', prompt: (t) => `Generate technical SEO recommendations for: "${t}". Cover: site speed, mobile, indexing, structured data, core web vitals. OUTPUT JSON: {"recommendations":[{"area":"...","issue":"...","fix":"..."}]}` },
+  { path: 'content-gap-analysis', prompt: (t) => `Perform content gap analysis for: "${t}". Identify 10 missing content opportunities. OUTPUT JSON: {"gaps":[{"topic":"...","difficulty":"...","opportunity":"..."}]}` },
+  { path: 'serp-analysis', prompt: (t) => `Analyze SERP for keyword: "${t}". Identify top 10 competitors, content types, featured snippet opportunities. OUTPUT JSON: {"competitors":["..."],"content_types":["..."],"snippet_opportunity":"..."}` },
+  { path: 'email-subject-lines', prompt: (t) => `Generate 15 high-open-rate email subject lines for: "${t}". Under 50 chars, various styles. OUTPUT JSON: {"subject_lines":["..."]}` },
+  { path: 'email-sequence', prompt: (t) => `Create 5-email marketing sequence for: "${t}". Welcome/nurture/sales series. OUTPUT JSON: {"emails":[{"day":1,"subject":"...","body":"..."}]}` },
+  { path: 'social-media-strategy', prompt: (t) => `Create social media marketing strategy for: "${t}". Include: platform selection, content pillars, posting schedule. OUTPUT JSON: {"platforms":["..."],"pillars":["..."],"schedule":"..."}` },
+  { path: 'influencer-outreach', prompt: (t) => `Create influencer outreach template for: "${t}". Include: pitch email, talking points, partnership ideas. OUTPUT JSON: {"pitch":"...","talking_points":["..."],"ideas":["..."]}` },
+  { path: 'ad-targeting', prompt: (t) => `Generate Facebook/Google ad targeting recommendations for: "${t}". Include: audiences, interests, behaviors. OUTPUT JSON: {"audiences":["..."],"interests":["..."],"behaviors":["..."]}` },
+  { path: 'landing-page-optimizer', prompt: (t) => `Optimize landing page for: "${t}". Include: headline suggestions, CTA optimization, form improvements, trust elements. OUTPUT JSON: {"headlines":["..."],"ctas":["..."],"forms":["..."],"trust":["..."]}` },
+  { path: 'conversion-rate-optimizer', prompt: (t) => `Suggest conversion rate optimization tactics for: "${t}". Include: 10 actionable improvements. OUTPUT JSON: {"tactics":[{"tactic":"...","expected_impact":"...","implementation":"..."}]}` },
+  { path: 'utm-builder', prompt: (t) => `Generate UTM tracking parameters for: "${t}". Include: source, medium, campaign variations. OUTPUT JSON: {"utm_links":["..."]}` },
+  { path: 'retargeting-strategy', prompt: (t) => `Create retargeting strategy for: "${t}". Include: audience segments, ad creative, frequency. OUTPUT JSON: {"segments":["..."],"creatives":["..."],"frequency":"..."}` },
+  { path: 'ppc-campaign', prompt: (t) => `Create PPC campaign structure for: "${t}". Include: ad groups, keywords, ad copy, bids. OUTPUT JSON: {"ad_groups":[{"name":"...","keywords":["..."],"ads":["..."]}]}` },
+  { path: 'seo-blog-outline', prompt: (t) => `Create SEO-optimized blog outline for: "${t}". Include: title, H2s, keywords, internal links. OUTPUT JSON: {"title":"...","h2s":["..."],"keywords":["..."],"links":["..."]}` },
+  { path: 'featured-snippet', prompt: (t) => `Optimize content for featured snippet: "${t}". Include: definition, list, table format. OUTPUT JSON: {"definition":"...","list":["..."],"table":"..."}` },
+  { path: 'voice-search', prompt: (t) => `Optimize for voice search: "${t}". Generate 10 conversational questions and answers. OUTPUT JSON: {"qas":[{"question":"...","answer":"..."}]}` },
+  { path: 'youtube-keywords', prompt: (t) => `Generate YouTube-specific keywords for: "${t}". Include: tags, video topics, search terms. OUTPUT JSON: {"tags":["..."],"topics":["..."],"search_terms":["..."]}` },
+  { path: 'podcast-show-notes-seo', prompt: (t) => `Create SEO-optimized podcast show notes for: "${t}". Include: title, description, timestamps, keywords. OUTPUT JSON: {"title":"...","description":"...","timestamps":["..."],"keywords":["..."]}` },
+  { path: 'affiliate-content', prompt: (t) => `Create affiliate content outline for: "${t}". Include: product comparisons, pros/cons, call to action. OUTPUT JSON: {"outline":"...","comparisons":["..."],"pros":["..."],"cons":["..."]}` },
+  { path: 'review-content', prompt: (t) => `Create review content for: "${t}". Include: overview, features, performance, verdict. OUTPUT JSON: {"overview":"...","features":["..."],"performance":"...","verdict":"..."}` },
+  { path: 'comparison-content', prompt: (t) => `Create comparison content for: "${t}". Include: feature matrix, pricing, pros/cons, recommendation. OUTPUT JSON: {"matrix":["..."],"pricing":"...","recommendation":"..."}` },
+  { path: 'how-to-content', prompt: (t) => `Create how-to guide outline for: "${t}". Include: introduction, steps, tips, troubleshooting. OUTPUT JSON: {"intro":"...","steps":["..."],"tips":["..."],"troubleshooting":["..."]}` },
+  { path: 'listicle-content', prompt: (t) => `Create listicle outline for: "${t}". 10 items with descriptions. OUTPUT JSON: {"items":[{"number":1,"title":"...","description":"..."}]}` },
+  { path: 'faq-content', prompt: (t) => `Create FAQ content for: "${t}". 10 questions with detailed answers. OUTPUT JSON: {"faqs":[{"question":"...","answer":"..."}]}` },
+  { path: 'glossary-content', prompt: (t) => `Create glossary for: "${t}". 15 terms with definitions. OUTPUT JSON: {"terms":[{"term":"...","definition":"..."}]}` },
 
-    // === SEO & MARKETING ===
-    {
-        path: 'meta-tag-generator',
-        prompt: (t) => `Generate SEO meta tags for "${t}". Title under 60 chars, description 150-155 chars, 10 keywords, og_title, og_description. OUTPUT JSON: {"title":"...","description":"...","keywords":["..."],"og_title":"...","og_description":"..."} No markdown.`
-    },
-    {
-        path: 'youtube-seo',
-        prompt: (t) => `Generate 5 YouTube titles (under 70 chars, high CTR) and 10 SEO tags for "${t}". OUTPUT JSON: {"titles":["..."],"tags":["..."]} No markdown.`
-    },
-    {
-        path: 'ai-hashtag-generator',
-        prompt: (t) => `Generate 1 engaging caption and 20 viral hashtags for "${t}". Mix small, medium, and large hashtags. OUTPUT JSON: {"caption":"...","hashtags":["#..."]} No markdown.`
-    },
-    {
-        path: 'website-auditor',
-        prompt: (t) => `Perform a complete SEO audit for: "${t}". Cover: technical SEO, on-page SEO, content quality, backlink profile, mobile optimization, page speed. Give specific actionable fixes with priority levels. OUTPUT CLEAN TEXT.`
-    },
-    {
-        path: 'competitor-analyzer',
-        prompt: (t) => `Analyze competitor "${t}". Find: keyword gaps, content gaps, backlink opportunities, traffic sources, top performing pages, content strategy. Give actionable steps to outrank them. OUTPUT CLEAN TEXT.`
-    },
-    {
-        path: 'schema-generator',
-        prompt: (t) => `Generate 4 JSON-LD schemas for "${t}": BlogPosting, Product, FAQPage, Organization. Valid structured data. OUTPUT JSON: {"schemas":[{"@type":"BlogPosting",...}]} No markdown.`
-    },
-    {
-        path: 'content-calendar',
-        prompt: (t) => `30-day content calendar for "${t}". Each day: topic, keyword, content type, platform. OUTPUT JSON: {"calendar":[{"day":1,"topic":"...","keyword":"...","type":"Blog","platform":"Website"}]} No markdown.`
-    },
-    {
-        path: 'content-repurposer',
-        prompt: (t) => `Repurpose "${t}" into 5 formats: Twitter thread, LinkedIn post, newsletter section, Instagram caption, YouTube hook. Platform-optimized. OUTPUT JSON: {"formats":[{"type":"...","content":"..."}]} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 5: BUSINESS & LEGAL (40+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'business-name-generator', prompt: (t) => `Generate 20 business names for "${t}". Format: "Name — Tagline | domain.com". Creative, memorable, brandable. OUTPUT JSON: {"names":["..."]}` },
+  { path: 'startup-ideas', prompt: (t) => `Generate 5 startup ideas for "${t}". Each: name, problem, market size, revenue model, startup cost, 5 launch steps. OUTPUT JSON: {"ideas":[{"name":"...","problem":"...","market":"...","revenue":"...","cost":"...","steps":["..."]}]}` },
+  { path: 'product-description', prompt: (t) => `Write 3 product descriptions for "${t}". E-commerce optimized with benefits, features, social proof, SEO keywords. OUTPUT JSON: {"descriptions":[{"headline":"...","body":"..."}]}` },
+  { path: 'invoice-generator', prompt: (t) => `Create invoice for "${t}". INV-${Math.floor(Math.random() * 9000) + 1000}. Date: ${new Date().toLocaleDateString()}. Professional inline CSS. OUTPUT ONLY HTML.` },
+  { path: 'privacy-policy-generator', prompt: (t) => `Write complete Privacy Policy for ${t}. 10 sections. Legal tone. OUTPUT ONLY HTML.` },
+  { path: 'terms-generator', prompt: (t) => `Write complete Terms of Service for ${t}. 10 sections. Legal tone. OUTPUT ONLY HTML.` },
+  { path: 'pricing-strategy', prompt: (t) => `Create a pricing strategy for: "${t}". Include: market analysis, pricing model, 3-tier pricing table, psychological tactics. OUTPUT JSON: {"analysis":"...","model":"...","tiers":[{"name":"...","price":"...","features":["..."]}],"tactics":["..."]}` },
+  { path: 'pitch-deck', prompt: (t) => `Create investor pitch deck for: "${t}". 12 slides with talking points. OUTPUT JSON: {"slides":[{"title":"...","points":["..."]}]}` },
+  { path: 'job-description', prompt: (t) => `Write job description for: "${t}". Include: title, department, responsibilities, requirements, benefits. OUTPUT JSON: {"title":"...","responsibilities":["..."],"requirements":["..."],"benefits":["..."]}` },
+  { path: 'swot-analysis', prompt: (t) => `Conduct SWOT analysis for: "${t}". 5 items each: Strengths, Weaknesses, Opportunities, Threats. OUTPUT JSON: {"strengths":["..."],"weaknesses":["..."],"opportunities":["..."],"threats":["..."]}` },
+  { path: 'business-plan', prompt: (t) => `Create business plan outline for: "${t}". Include: executive summary, market analysis, operations, financials. OUTPUT JSON: {"sections":[{"title":"...","content":"..."}]}` },
+  { path: 'financial-projections', prompt: (t) => `Create financial projections for: "${t}". 3-year revenue, expenses, profit projections. OUTPUT JSON: {"year1":{"revenue":"...","expenses":"...","profit":"..."},"year2":{},"year3":{}}` },
+  { path: 'break-even-analysis', prompt: (t) => `Calculate break-even analysis for: "${t}". Include: fixed costs, variable costs, break-even point. OUTPUT JSON: {"fixed_costs":"...","variable_costs":"...","break_even":"...","units_to_sell":"..."}` },
+  { path: 'competitive-analysis', prompt: (t) => `Analyze competitors for: "${t}". Include: top 5 competitors, their strengths, weaknesses, market position. OUTPUT JSON: {"competitors":[{"name":"...","strengths":["..."],"weaknesses":["..."]}]}` },
+  { path: 'market-research', prompt: (t) => `Create market research summary for: "${t}". Include: market size, trends, target audience, growth potential. OUTPUT JSON: {"size":"...","trends":["..."],"audience":"...","growth":"..."}` },
+  { path: 'partnership-proposal', prompt: (t) => `Write partnership proposal for: "${t}". Include: value proposition, terms, benefits, next steps. OUTPUT CLEAN TEXT.` },
+  { path: 'investor-update', prompt: (t) => `Write investor update email for: "${t}". Include: milestones, metrics, challenges, asks. OUTPUT JSON: {"milestones":["..."],"metrics":"...","challenges":["..."],"asks":["..."]}` },
+  { path: 'nda-generator', prompt: (t) => `Generate NDA for: "${t}". Include: parties, confidentiality terms, duration, exclusions. OUTPUT CLEAN TEXT.` },
+  { path: 'contract-template', prompt: (t) => `Generate contract template for: "${t}". Include: parties, scope, payment terms, deliverables, termination clause. OUTPUT CLEAN TEXT.` },
+  { path: 'service-agreement', prompt: (t) => `Create service agreement for: "${t}". Include: services, timeline, payment, deliverables. OUTPUT CLEAN TEXT.` },
+  { path: 'employee-handbook-outline', prompt: (t) => `Create employee handbook outline for: "${t}". Include: policies, procedures, culture. OUTPUT JSON: {"sections":["..."]}` },
+  { path: 'onboarding-checklist', prompt: (t) => `Create employee onboarding checklist for: "${t}". 30-60-90 day plan. OUTPUT JSON: {"days":[{"day":1,"tasks":["..."]}...]}` },
+  { path: 'performance-review', prompt: (t) => `Create performance review template for: "${t}". Include: criteria, ratings, goals. OUTPUT JSON: {"criteria":["..."],"rating_scale":"...","goals":["..."]}` },
+  { path: 'termination-letter', prompt: (t) => `Write professional termination letter for: "${t}". Include: reason, final pay, next steps. OUTPUT CLEAN TEXT.` },
+  { path: 'freelance-contract', prompt: (t) => `Create freelance contract for: "${t}". Include: scope, payment, timeline, IP rights. OUTPUT CLEAN TEXT.` },
+  { path: 'consulting-agreement', prompt: (t) => `Create consulting agreement for: "${t}". Include: services, fees, confidentiality, term. OUTPUT CLEAN TEXT.` },
+  { path: 'sales-proposal', prompt: (t) => `Create sales proposal for: "${t}". Include: problem, solution, pricing, timeline, terms. OUTPUT JSON: {"problem":"...","solution":"...","pricing":"...","timeline":"..."}` },
+  { path: 'vendor-agreement', prompt: (t) => `Create vendor agreement for: "${t}". Include: goods/services, pricing, delivery, terms. OUTPUT CLEAN TEXT.` },
+  { path: 'rental-agreement', prompt: (t) => `Create rental agreement for: "${t}". Include: parties, property, rent, duration, terms. OUTPUT CLEAN TEXT.` },
+  { path: 'license-agreement', prompt: (t) => `Create license agreement for: "${t}". Include: licensor, licensee, IP, fees, terms. OUTPUT CLEAN TEXT.` },
+  { path: 'release-form', prompt: (t) => `Create release form for: "${t}". Include: parties, rights, compensation, liability. OUTPUT CLEAN TEXT.` },
+  { path: 'non-compete', prompt: (t) => `Create non-compete agreement for: "${t}". Include: parties, scope, duration, jurisdiction. OUTPUT CLEAN TEXT.` },
+  { path: 'founder-agreement', prompt: (t) => `Create founder agreement for: "${t}". Include: equity, roles, vesting, exit provisions. OUTPUT JSON: {"equity":"...","roles":"...","vesting":"...","exit":"..."}` },
+  { path: 'stock-option', prompt: (t) => `Create stock option plan for: "${t}". Include: pool size, vesting, exercise price, terms. OUTPUT JSON: {"pool":"...","vesting":"...","price":"...","terms":"..."}` },
+  { path: 'board-resolution', prompt: (t) => `Create board resolution for: "${t}". Include: resolution, votes, effective date. OUTPUT CLEAN TEXT.` },
+  { path: 'incorporation-docs', prompt: (t) => `List required incorporation documents for: "${t}". OUTPUT JSON: {"documents":["..."]}` },
+  { path: 'trademark-application', prompt: (t) => `Prepare trademark application info for: "${t}". Include: mark, class, description, owner. OUTPUT JSON: {"mark":"...","class":"...","description":"...","owner":"..."}` },
+  { path: 'copyright-notice', prompt: (t) => `Create copyright notice for: "${t}". Include: work description, author, date, rights. OUTPUT CLEAN TEXT.` },
+  { path: 'patent-outline', prompt: (t) => `Prepare patent outline for: "${t}". Include: invention description, claims, prior art. OUTPUT JSON: {"invention":"...","claims":["..."],"prior_art":"..."}` },
+  { path: 'due-diligence-checklist', prompt: (t) => `Create due diligence checklist for: "${t}". OUTPUT JSON: {"categories":[{"name":"...","items":["..."]}]}` },
+  { path: 'exit-strategy', prompt: (t) => `Create exit strategy for: "${t}". Include: options, timeline, valuation, preparation. OUTPUT JSON: {"options":["..."],"timeline":"...","valuation":"..."}` },
 
-    // === NEW: MARKETING ANALYTICS ===
-    {
-        path: 'marketing-analytics',
-        prompt: (t) => `Analyze this marketing data and provide actionable insights: "${t}". Include: key metrics interpretation, 3 growth opportunities, 2 risk areas, budget allocation recommendations, next 30-day action plan. OUTPUT JSON: {"insights":"...","opportunities":["..."],"risks":["..."],"budget":"...","actions":["..."]} No markdown.`
-    },
-    {
-        path: 'ab-test-ideas',
-        prompt: (t) => `Generate 10 A/B test ideas for: "${t}". Each test should have: hypothesis, control version, variant description, primary metric to measure, expected lift, and implementation complexity. OUTPUT JSON: {"tests":[{"hypothesis":"...","control":"...","variant":"...","metric":"...","lift":"...","complexity":"..."}]} No markdown.`
-    },
-    {
-        path: 'customer-persona',
-        prompt: (t) => `Create detailed customer personas for: "${t}". Generate 3 personas with: name, age, job title, goals, pain points, buying triggers, preferred channels, objections, and decision criteria. OUTPUT JSON: {"personas":[{"name":"...","age":"...","job":"...","goals":["..."],"pain_points":["..."],"triggers":["..."],"channels":["..."],"objections":["..."],"criteria":["..."]}]} No markdown.`
-    },
-    {
-        path: 'value-proposition',
-        prompt: (t) => `Create a compelling value proposition for: "${t}". Include: main headline, subheadline, 3 benefit statements, differentiation from competitors, and proof points. OUTPUT JSON: {"headline":"...","subheadline":"...","benefits":["..."],"differentiation":"...","proof":["..."]} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 6: SOCIAL & NETWORKING (20+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'social-bio-generator', prompt: (t) => `Generate bios for "${t}". Instagram (150 chars), Twitter (160 chars), LinkedIn (260 chars), TikTok (80 chars). OUTPUT JSON: {"platforms":[{"platform":"instagram","bio":"..."}]}` },
+  { path: 'resume-builder', prompt: (t) => `Create ATS-friendly resume for ${t}. Header, summary, experience with metrics, skills, education. Clean inline CSS. OUTPUT ONLY HTML.` },
+  { path: 'review-response-generator', prompt: (t) => `Write professional responses for review: "${t}". Responses for 1-star, 3-star, 5-star reviews. OUTPUT JSON: {"responses":[{"stars":1,"response":"..."}]}` },
+  { path: 'linkedin-post', prompt: (t) => `Write viral LinkedIn post about: "${t}". Include: hook, story, tips, question, hashtags. OUTPUT JSON: {"hook":"...","story":"...","tips":["..."],"hashtags":["..."]}` },
+  { path: 'cold-email', prompt: (t) => `Write cold email for: "${t}". Include: subject, opening, value, proof, CTA, PS. OUTPUT JSON: {"subject":"...","opening":"...","value":"...","cta":"..."}` },
+  { path: 'twitter-thread', prompt: (t) => `Write Twitter thread about: "${t}". 8-10 tweets with hook, value, CTA. OUTPUT JSON: {"tweets":["..."]}` },
+  { path: 'instagram-caption', prompt: (t) => `Write Instagram caption for: "${t}". Include: hook, body, hashtags, CTA. OUTPUT JSON: {"hook":"...","body":"...","hashtags":"...","cta":"..."}` },
+  { path: 'tiktok-script', prompt: (t) => `Write TikTok script for: "${t}". Include: hook, main content, CTA. Under 60 seconds. OUTPUT JSON: {"hook":"...","content":"...","cta":"..."}` },
+  { path: 'cover-letter', prompt: (t) => `Write cover letter for: "${t}". Professional, specific, results-focused. OUTPUT CLEAN TEXT.` },
+  { path: 'thank-you-note', prompt: (t) => `Write thank you note for: "${t}". Professional and sincere. OUTPUT CLEAN TEXT.` },
+  { path: 'networking-email', prompt: (t) => `Write networking email for: "${t}". Include: connection, purpose, ask. OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'introduction-email', prompt: (t) => `Write introduction email for: "${t}". Professional and clear. OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'follow-up-email', prompt: (t) => `Write follow-up email for: "${t}". Polite, persistent, professional. OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'rejection-email', prompt: (t) => `Write rejection email for: "${t}". Professional, empathetic, clear. OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'recommendation-letter', prompt: (t) => `Write recommendation letter for: "${t}". Specific achievements, skills assessment. OUTPUT CLEAN TEXT.` },
+  { path: 'reference-request', prompt: (t) => `Write reference request email for: "${t}". Professional and specific. OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'linkedin-headline', prompt: (t) => `Generate 5 LinkedIn headlines for: "${t}". Professional, keyword-rich, compelling. OUTPUT JSON: {"headlines":["..."]}` },
+  { path: 'linkedin-summary', prompt: (t) => `Write LinkedIn summary for: "${t}". Include: expertise, achievements, personality, CTA. OUTPUT CLEAN TEXT.` },
+  { path: 'dating-profile', prompt: (t) => `Write dating profile for: "${t}". Authentic, engaging, specific. OUTPUT JSON: {"bio":"...","prompts":["..."]}` },
+  { path: 'wedding-vows', prompt: (t) => `Write wedding vows for: "${t}". Personal, emotional, specific. OUTPUT CLEAN TEXT.` },
+  { path: 'toast-speech', prompt: (t) => `Write toast speech for: "${t}". Include: opening, stories, wishes, closing. OUTPUT CLEAN TEXT.` },
 
-    // === BUSINESS & LEGAL ===
-    {
-        path: 'business-name-generator',
-        prompt: (t) => `Generate 20 business names for "${t}". Format: "Name — Tagline | domain.com". Creative, memorable, brandable. OUTPUT JSON: {"names":["..."]} No markdown.`
-    },
-    {
-        path: 'startup-ideas',
-        prompt: (t) => `Generate 5 startup ideas for "${t}". Each: name, problem, market size, revenue model, startup cost, 5 launch steps. OUTPUT JSON: {"ideas":[{"name":"...","problem":"...","market":"...","revenue":"...","cost":"...","steps":["..."]}]} No markdown.`
-    },
-    {
-        path: 'product-description',
-        prompt: (t) => `Write 3 product descriptions for "${t}". E-commerce optimized with benefits, features, social proof, SEO keywords. OUTPUT JSON: {"descriptions":[{"headline":"...","body":"..."}]} No markdown.`
-    },
-    {
-        path: 'invoice-generator',
-        prompt: (t) => `Create invoice for "${t}". INV-${Math.floor(Math.random() * 9000) + 1000}. Date: ${new Date().toLocaleDateString()}. Professional inline CSS. OUTPUT ONLY HTML.`
-    },
-    {
-        path: 'privacy-policy-generator',
-        prompt: (t) => `Write complete Privacy Policy for ${t}. 10 sections. Legal tone. OUTPUT ONLY HTML.`
-    },
-    {
-        path: 'terms-generator',
-        prompt: (t) => `Write complete Terms of Service for ${t}. 10 sections. Legal tone. OUTPUT ONLY HTML.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 7: PRODUCTIVITY (30+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'ai-translator', prompt: (t) => `Detect language and translate to English. If already English, translate to Spanish. Text: "${t}". OUTPUT JSON: {"detected_language":"...","translated_text":"...","pronunciation":"..."}` },
+  { path: 'ai-quote-generator', prompt: (t) => `Generate 10 original, shareable quotes about "${t}". OUTPUT JSON: {"quotes":[{"quote":"...","author":"...","category":"..."}]}` },
+  { path: 'crisis-response', prompt: (t) => `Write crisis communication for: "${t}". Include: acknowledgment, action, timeline. OUTPUT JSON: {"acknowledgment":"...","action":"...","timeline":"..."}` },
+  { path: 'summarizer', prompt: (t) => `Summarize this content: "${t}". Key points only, bullet format. OUTPUT JSON: {"summary":"...","key_points":["..."]}` },
+  { path: 'bullet-points', prompt: (t) => `Convert to bullet points: "${t}". Clean, scannable format. OUTPUT JSON: {"bullets":["..."]}` },
+  { path: 'simplifier', prompt: (t) => `Simplify this text for general audience: "${t}". Clear, jargon-free. OUTPUT CLEAN TEXT.` },
+  { path: 'expander', prompt: (t) => `Expand this content with more detail: "${t}". Add examples, explanations. OUTPUT CLEAN TEXT.` },
+  { path: 'tone-changer', prompt: (t) => `Rewrite in different tones for: "${t}". Generate professional, casual, humorous, formal versions. OUTPUT JSON: {"professional":"...","casual":"...","humorous":"...","formal":"..."}` },
+  { path: 'grammar-checker', prompt: (t) => `Check and fix grammar: "${t}". List corrections. OUTPUT JSON: {"corrected":"...","changes":["..."]}` },
+  { path: 'spell-checker', prompt: (t) => `Check and fix spelling: "${t}". List corrections. OUTPUT JSON: {"corrected":"...","changes":["..."]}` },
+  { path: 'readability-checker', prompt: (t) => `Analyze readability of: "${t}". Score, grade level, suggestions. OUTPUT JSON: {"score":"...","grade_level":"...","suggestions":["..."]}` },
+  { path: 'word-counter', prompt: (t) => `Analyze this text: "${t}". Word count, sentence count, reading time. OUTPUT JSON: {"words":"...","sentences":"...","reading_time":"..."}` },
+  { path: 'plagiarism-check', prompt: (t) => `Check for potential plagiarism issues in: "${t}". List unique phrases. OUTPUT JSON: {"unique_content":"...","generic_phrases":["..."]}` },
+  { path: 'acronym-generator', prompt: (t) => `Create 10 acronyms for: "${t}". Creative and memorable. OUTPUT JSON: {"acronyms":[{"acronym":"...","meaning":"..."}]}` },
+  { path: 'mnemonic-generator', prompt: (t) => `Create mnemonics for: "${t}". Easy to remember. OUTPUT JSON: {"mnemonics":["..."]}` },
+  { path: 'todo-list', prompt: (t) => `Create prioritized todo list for: "${t}". Urgent, important, later categories. OUTPUT JSON: {"urgent":["..."],"important":["..."],"later":["..."]}` },
+  { path: 'goal-setting', prompt: (t) => `Create SMART goals for: "${t}". Specific, measurable, achievable, relevant, time-bound. OUTPUT JSON: {"goals":[{"goal":"...","smart":"..."}]}` },
+  { path: 'habit-tracker', prompt: (t) => `Create habit tracking plan for: "${t}". Daily, weekly, monthly habits. OUTPUT JSON: {"daily":["..."],"weekly":["..."],"monthly":["..."]}` },
+  { path: 'time-blocks', prompt: (t) => `Create time-blocking schedule for: "${t}". Morning, afternoon, evening blocks. OUTPUT JSON: {"morning":["..."],"afternoon":["..."],"evening":["..."]}` },
+  { path: 'decision-matrix', prompt: (t) => `Create decision matrix for: "${t}". Options, criteria, weights, scores. OUTPUT JSON: {"matrix":[{"option":"...","score":"..."}]}` },
+  { path: 'pros-cons', prompt: (t) => `Create pros and cons list for: "${t}". 10 each side. OUTPUT JSON: {"pros":["..."],"cons":["..."]}` },
+  { path: 'meeting-agenda', prompt: (t) => `Create meeting agenda for: "${t}". Topics, time allocations, owners. OUTPUT JSON: {"agenda":[{"topic":"...","time":"...","owner":"..."}]}` },
+  { path: 'weekly-planner', prompt: (t) => `Create weekly planner for: "${t}". Day-by-day tasks. OUTPUT JSON: {"days":[{"day":"Monday","tasks":["..."]}]}` },
+  { path: 'project-outline', prompt: (t) => `Create project outline for: "${t}". Phases, milestones, deliverables. OUTPUT JSON: {"phases":[{"name":"...","milestones":["..."]}]}` },
+  { path: 'brainstorm-ideas', prompt: (t) => `Generate 20 brainstorm ideas for: "${t}". Diverse and creative. OUTPUT JSON: {"ideas":["..."]}` },
+  { path: 'mind-map', prompt: (t) => `Create text-based mind map for: "${t}". Main topic, branches, sub-topics. OUTPUT JSON: {"main":"...","branches":[{"topic":"...","items":["..."]}]}` },
+  { path: 'checklist-creator', prompt: (t) => `Create checklist for: "${t}". Comprehensive, ordered. OUTPUT JSON: {"items":["..."]}` },
+  { path: 'sop-generator', prompt: (t) => `Create Standard Operating Procedure for: "${t}". Step-by-step process. OUTPUT JSON: {"purpose":"...","steps":["..."],"notes":["..."]}` },
+  { path: 'workflow-diagram', prompt: (t) => `Describe workflow diagram for: "${t}". Steps, decisions, endpoints. OUTPUT JSON: {"steps":[{"step":"...","type":"...","next":"..."}]}` },
+  { path: 'api-documentation', prompt: (t) => `Create API documentation for: "${t}". Endpoints, parameters, responses. OUTPUT JSON: {"endpoints":[{"method":"...","path":"...","params":"...","response":"..."}]}` },
+  { path: 'error-message', prompt: (t) => `Create helpful error messages for: "${t}". User-friendly, actionable. OUTPUT JSON: {"errors":[{"code":"...","message":"..."}]}` },
 
-    // === NEW: FINANCE & BUSINESS ===
-    {
-        path: 'pricing-strategy',
-        prompt: (t) => `Create a pricing strategy for: "${t}". Include: market analysis, recommended pricing model, 3-tier pricing table with features, psychological pricing tactics, and competitive positioning. OUTPUT JSON: {"analysis":"...","model":"...","tiers":[{"name":"...","price":"...","features":["..."]}],"tactics":["..."],"positioning":"..."} No markdown.`
-    },
-    {
-        path: 'pitch-deck',
-        prompt: (t) => `Create an investor pitch deck outline for: "${t}". 12 slides: Title, Problem, Solution, Market Size, Product, Business Model, Traction, Competition, Team, Financials, Ask, Contact. Each with key talking points. OUTPUT JSON: {"slides":[{"title":"...","points":["..."]}]} No markdown.`
-    },
-    {
-        path: 'job-description',
-        prompt: (t) => `Write a detailed job description for: "${t}". Include: job title, department, reports to, summary, responsibilities (8-10), requirements, benefits, growth path, and application instructions. OUTPUT JSON: {"title":"...","department":"...","summary":"...","responsibilities":["..."],"requirements":["..."],"benefits":["..."],"growth":"...","apply":"..."} No markdown.`
-    },
-    {
-        path: 'swot-analysis',
-        prompt: (t) => `Conduct a SWOT analysis for: "${t}". Identify 5 items for each: Strengths, Weaknesses, Opportunities, Threats. Include strategic recommendations based on the analysis. OUTPUT JSON: {"strengths":["..."],"weaknesses":["..."],"opportunities":["..."],"threats":["..."],"recommendations":["..."]} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 8: E-COMMERCE (20+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'ecommerce-product-title', prompt: (t) => `Generate 10 SEO product titles for: "${t}". Include keywords and benefits. OUTPUT JSON: {"titles":["..."]}` },
+  { path: 'ecommerce-bullet-points', prompt: (t) => `Generate 5 Amazon-style bullet points for: "${t}". Feature + benefit format. OUTPUT JSON: {"bullets":["..."]}` },
+  { path: 'ecommerce-description', prompt: (t) => `Write ecommerce product description for: "${t}". SEO-optimized, conversion-focused. OUTPUT CLEAN TEXT.` },
+  { path: 'ecommerce-meta-fields', prompt: (t) => `Generate ecommerce meta fields for: "${t}". Title, description, alt text. OUTPUT JSON: {"title":"...","description":"...","alt_text":"..."}` },
+  { path: 'ecommerce-category', prompt: (t) => `Suggest product categories and tags for: "${t}". OUTPUT JSON: {"categories":["..."],"tags":["..."]}` },
+  { path: 'ecommerce-pricing', prompt: (t) => `Suggest pricing strategy for: "${t}". Base price, sale price, psychological pricing. OUTPUT JSON: {"base":"...","sale":"...","strategy":"..."}` },
+  { path: 'ecommerce-upgrade', prompt: (t) => `Generate upsell/cross-sell ideas for: "${t}". OUTPUT JSON: {"upsells":["..."],"cross_sells":["..."]}` },
+  { path: 'ecommerce-bundle', prompt: (t) => `Create product bundle ideas for: "${t}". OUTPUT JSON: {"bundles":[{"name":"...","items":["..."],"savings":"..."}]}` },
+  { path: 'ecommerce-review-request', prompt: (t) => `Write review request email for: "${t}". OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'ecommerce-abandoned-cart', prompt: (t) => `Write abandoned cart email for: "${t}". OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'ecommerce-welcome', prompt: (t) => `Write welcome email for: "${t}". Brand intro, discount offer. OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'ecommerce-shipping', prompt: (t) => `Write shipping notification for: "${t}". OUTPUT JSON: {"subject":"...","body":"..."}` },
+  { path: 'ecommerce-return', prompt: (t) => `Create return policy for: "${t}". OUTPUT CLEAN TEXT.` },
+  { path: 'ecommerce-promo', prompt: (t) => `Generate 10 promo codes and campaign ideas for: "${t}". OUTPUT JSON: {"codes":["..."],"ideas":["..."]}` },
+  { path: 'ecommerce-gift', prompt: (t) => `Write gift message options for: "${t}". OUTPUT JSON: {"messages":["..."]}` },
+  { path: 'ecommerce-faq', prompt: (t) => `Generate 10 FAQs for: "${t}". OUTPUT JSON: {"faqs":[{"q":"...","a":"..."}]}` },
+  { path: 'ecommerce-size-guide', prompt: (t) => `Create size guide for: "${t}". OUTPUT JSON: {"sizes":[{"size":"...","measurements":"..."}]}` },
+  { path: 'ecommerce-comparison', prompt: (t) => `Create product comparison for: "${t}". OUTPUT JSON: {"features":["..."],"products":[{"name":"...","values":["..."]}]}` },
+  { path: 'ecommerce-specification', prompt: (t) => `Generate product specifications for: "${t}". OUTPUT JSON: {"specs":[{"name":"...","value":"..."}]}` },
+  { path: 'dropship-product', prompt: (t) => `Analyze dropship potential for: "${t}". OUTPUT JSON: {"score":"...","pros":["..."],"cons":["..."],"recommendation":"..."}` },
 
-    // === SOCIAL & PERSONAL ===
-    {
-        path: 'social-bio-generator',
-        prompt: (t) => `Generate bios for "${t}". Instagram (150 chars), Twitter (160 chars), LinkedIn (260 chars), TikTok (80 chars). Each engaging and platform-optimized. OUTPUT JSON: {"platforms":[{"platform":"instagram","bio":"..."},{"platform":"twitter","bio":"..."},{"platform":"linkedin","bio":"..."},{"platform":"tiktok","bio":"..."}]} No markdown.`
-    },
-    {
-        path: 'resume-builder',
-        prompt: (t) => `Create ATS-friendly resume for ${t}. Header, summary, experience with metrics, skills, education. Clean inline CSS. OUTPUT ONLY HTML.`
-    },
-    {
-        path: 'review-response-generator',
-        prompt: (t) => `Write professional responses for review: "${t}". Generate responses for 1-star, 3-star, and 5-star reviews. Each empathetic and brand-positive. OUTPUT JSON: {"responses":[{"stars":1,"response":"..."},{"stars":3,"response":"..."},{"stars":5,"response":"..."}]} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 9: EDUCATION & LEARNING (20+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'lesson-plan', prompt: (t) => `Create lesson plan for: "${t}". Objectives, activities, assessment. OUTPUT JSON: {"objectives":["..."],"activities":["..."],"assessment":"..."}` },
+  { path: 'quiz-generator', prompt: (t) => `Generate 10 quiz questions for: "${t}". Multiple choice. OUTPUT JSON: {"questions":[{"q":"...","options":["..."],"answer":"..."}]}` },
+  { path: 'flashcards', prompt: (t) => `Generate 20 flashcards for: "${t}". Term + definition. OUTPUT JSON: {"cards":[{"term":"...","definition":"..."}]}` },
+  { path: 'study-guide', prompt: (t) => `Create study guide for: "${t}". Key concepts, formulas, examples. OUTPUT JSON: {"concepts":[{"name":"...","explanation":"..."}]}` },
+  { path: 'essay-outline', prompt: (t) => `Create essay outline for: "${t}". Thesis, arguments, evidence. OUTPUT JSON: {"thesis":"...","arguments":[{"claim":"...","evidence":"..."}]}` },
+  { path: 'research-questions', prompt: (t) => `Generate 10 research questions for: "${t}". OUTPUT JSON: {"questions":["..."]}` },
+  { path: 'annotation-helper', prompt: (t) => `Create annotations for: "${t}". Key insights, themes. OUTPUT JSON: {"annotations":["..."]}` },
+  { path: 'bibography-generator', prompt: (t) => `Generate bibliography format for: "${t}". APA, MLA, Chicago styles. OUTPUT JSON: {"apa":"...","mla":"...","chicago":"..."}` },
+  { path: 'debate-points', prompt: (t) => `Generate debate points for: "${t}". Pro and con arguments. OUTPUT JSON: {"pro":["..."],"con":["..."]}` },
+  { path: 'presentation-notes', prompt: (t) => `Create presentation notes for: "${t}". Key talking points. OUTPUT JSON: {"slides":[{"title":"...","notes":"..."}]}` },
+  { path: 'course-outline', prompt: (t) => `Create course outline for: "${t}". Modules, lessons, duration. OUTPUT JSON: {"modules":[{"name":"...","lessons":["..."]}]}` },
+  { path: 'learning-objectives', prompt: (t) => `Create learning objectives for: "${t}". Bloom's taxonomy. OUTPUT JSON: {"objectives":[{"level":"...","objective":"..."}]}` },
+  { path: 'rubric-generator', prompt: (t) => `Create rubric for: "${t}". Criteria, levels, points. OUTPUT JSON: {"criteria":[{"name":"...","levels":["..."]}]}` },
+  { path: 'homework-assignment', prompt: (t) => `Create homework assignment for: "${t}". Instructions, requirements, rubric. OUTPUT JSON: {"instructions":"...","requirements":["..."]}` },
+  { path: 'lab-report-outline', prompt: (t) => `Create lab report outline for: "${t}". Sections, requirements. OUTPUT JSON: {"sections":["..."]}` },
+  { path: 'literature-analysis', prompt: (t) => `Analyze literature for: "${t}". Themes, symbols, characterization. OUTPUT JSON: {"themes":["..."],"symbols":["..."],"characters":["..."]}` },
+  { path: 'math-problem-explainer', prompt: (t) => `Explain this math problem step-by-step: "${t}". OUTPUT JSON: {"steps":["..."],"answer":"..."}` },
+  { path: 'science-explainer', prompt: (t) => `Explain this scientific concept simply: "${t}". OUTPUT JSON: {"explanation":"...","examples":["..."]}` },
+  { path: 'history-timeline', prompt: (t) => `Create historical timeline for: "${t}". OUTPUT JSON: {"events":[{"year":"...","event":"..."}]}` },
+  { path: 'language-lesson', prompt: (t) => `Create language learning lesson for: "${t}". Vocabulary, grammar, practice. OUTPUT JSON: {"vocabulary":["..."],"grammar":"...","practice":["..."]}` },
 
-    // === NEW: LINKEDIN & NETWORKING ===
-    {
-        path: 'linkedin-post',
-        prompt: (t) => `Write a viral LinkedIn post about: "${t}". Include: hook (first line that stops scroll), personal story or insight, 3 actionable tips, engaging question, and relevant hashtags. Keep it conversational and authentic. OUTPUT JSON: {"hook":"...","story":"...","tips":["..."],"question":"...","hashtags":["..."]} No markdown.`
-    },
-    {
-        path: 'cold-email',
-        prompt: (t) => `Write a cold email for: "${t}". Include: subject line (under 50 chars), personalized opening, value proposition, social proof, clear CTA, and PS line. Keep it under 150 words. OUTPUT JSON: {"subject":"...","opening":"...","value":"...","proof":"...","cta":"...","ps":"..."} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 10: HEALTH & FITNESS (10+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'workout-plan', prompt: (t) => `Create workout plan for: "${t}". Weekly schedule, exercises, sets/reps. OUTPUT JSON: {"schedule":[{"day":"...","exercises":["..."]}]}` },
+  { path: 'meal-plan', prompt: (t) => `Create meal plan for: "${t}". Daily meals, calories, macros. OUTPUT JSON: {"meals":[{"name":"..."," foods":["..."],"calories":"..."}]}` },
+  { path: 'nutrition-analysis', prompt: (t) => `Analyze nutrition for: "${t}". Calories, macros, vitamins. OUTPUT JSON: {"calories":"...","macros":"...","vitamins":["..."]}` },
+  { path: 'recipe-generator', prompt: (t) => `Generate recipe for: "${t}". Ingredients, steps, nutrition. OUTPUT JSON: {"ingredients":["..."],"steps":["..."],"nutrition":"..."}` },
+  { path: 'fitness-goal', prompt: (t) => `Create fitness goal plan for: "${t}". Milestones, timeline, tracking. OUTPUT JSON: {"goal":"...","milestones":["..."],"tracking":["..."]}` },
+  { path: 'habit-stacker', prompt: (t) => `Create habit stacking routine for: "${t}". OUTPUT JSON: {"routine":[{"trigger":"...","habit":"..."}]}` },
+  { path: 'sleep-optimizer', prompt: (t) => `Create sleep optimization plan for: "${t}". OUTPUT JSON: {"tips":["..."],"routine":["..."]}` },
+  { path: 'stress-relief', prompt: (t) => `Generate stress relief techniques for: "${t}". OUTPUT JSON: {"techniques":["..."]}` },
+  { path: 'meditation-script', prompt: (t) => `Write meditation script for: "${t}". 5-10 minute guide. OUTPUT CLEAN TEXT.` },
+  { path: 'hydration-reminder', prompt: (t) => `Create hydration schedule for: "${t}". OUTPUT JSON: {"schedule":[{"time":"...","amount":"..."}]}` },
 
-    // === PRODUCTIVITY ===
-    {
-        path: 'ai-translator',
-        prompt: (t) => `Detect language and translate to English. If already English, translate to Spanish. Text: "${t}". OUTPUT JSON: {"detected_language":"...","translated_text":"...","pronunciation":"..."} No markdown.`
-    },
-    {
-        path: 'ai-quote-generator',
-        prompt: (t) => `Generate 10 original, shareable quotes about "${t}". Each with the quote and a fictional author name + category. OUTPUT JSON: {"quotes":[{"quote":"...","author":"...","category":"..."}]} No markdown.`
-    },
-    {
-        path: 'website-roaster',
-        prompt: (t) => `You are a savage, hilarious website reviewer. Roast this website: "${t}". FORMAT STRICTLY AS:\n🔥 FIRST IMPRESSION (1-2 sentences)\n🎭 DESIGN ROAST\n📝 CONTENT ROAST\n🔍 SEO ROAST\n⚖️ THE VERDICT\n💡 ACTUALLY USEFUL ADVICE (3 bullet points)\nBe sarcastic and funny. Use emojis. Under 300 words. OUTPUT CLEAN TEXT.`
-    },
-
-    // === NEW: PRESS & PR ===
-    {
-        path: 'press-release',
-        prompt: (t) => `Write a professional press release for: "${t}". Include: FOR IMMEDIATE RELEASE, headline, dateline, introduction paragraph (who, what, when, where, why), 2 body paragraphs with quotes, boilerplate, and contact info. Follow AP style. OUTPUT CLEAN TEXT.`
-    },
-    {
-        path: 'crisis-response',
-        prompt: (t) => `Write a crisis communication response for: "${t}". Include: acknowledgment statement, responsibility acceptance (if applicable), action plan, timeline, and commitment to improvement. Professional, empathetic, and clear. OUTPUT JSON: {"acknowledgment":"...","responsibility":"...","action":"...","timeline":"...","commitment":"..."} No markdown.`
-    },
+  // ═══════════════════════════════════════════════════════════════════
+  // SECTION 11: DEVELOPMENT & CODE (20+ Tools)
+  // ═══════════════════════════════════════════════════════════════════
+  { path: 'code-explainer', prompt: (t) => `Explain this code in simple terms: "${t}". OUTPUT JSON: {"explanation":"...","line_by_line":["..."]}` },
+  { path: 'code-refactor', prompt: (t) => `Refactor this code for better performance and readability: "${t}". OUTPUT JSON: {"refactored":"...","improvements":["..."]}` },
+  { path: 'unit-test', prompt: (t) => `Generate unit tests for: "${t}". OUTPUT JSON: {"tests":[{"name":"...","code":"..."}]}` },
+  { path: 'api-endpoint', prompt: (t) => `Design API endpoint for: "${t}". INPUT JSON: {"method":"...","path":"...","params":"...","response":"..."}` },
+  { path: 'sql-query', prompt: (t) => `Generate SQL query for: "${t}". OUTPUT JSON: {"query":"...","explanation":"..."}` },
+  { path: 'regex-generator', prompt: (t) => `Generate regex pattern for: "${t}". OUTPUT JSON: {"regex":"...","explanation":"...","examples":["..."]}` },
+  { path: 'git-command', prompt: (t) => `Explain git command for: "${t}". OUTPUT JSON: {"command":"...","explanation":"...","alternatives":["..."]}` },
+  { path: 'dockerfile-generator', prompt: (t) => `Generate Dockerfile for: "${t}". OUTPUT JSON: {"dockerfile":"...","explanation":["..."]}` },
+  { path: 'json-schema', prompt: (t) => `Create JSON schema for: "${t}". INPUT JSON: {"schema":"..."}` },
+  { path: 'typescript-interface', prompt: (t) => `Generate TypeScript interface for: "${t}". OUTPUT JSON: {"interface":"..."}` },
+  { path: 'rest-api-docs', prompt: (t) => `Create REST API documentation for: "${t}". OUTPUT JSON: {"endpoints":[{"method":"...","path":"...","description":"..."}]}` },
+  { path: 'graphql-schema', prompt: (t) => `Create GraphQL schema for: "${t}". OUTPUT JSON: {"schema":"..."}` },
+  { path: 'error-handling', prompt: (t) => `Create error handling code for: "${t}". OUTPUT JSON: {"code":"...","errors_handled":["..."]}` },
+  { path: 'authentication-code', prompt: (t) => `Generate authentication code for: "${t}". OUTPUT JSON: {"code":"...","method":"..."}` },
+  { path: 'crud-operations', prompt: (t) => `Generate CRUD operations for: "${t}". OUTPUT JSON: {"operations":[{"name":"...","code":"..."}]}` },
+  { path: 'database-schema', prompt: (t) => `Create database schema for: "${t}". OUTPUT JSON: {"tables":[{"name":"...","columns":["..."]}]}` },
+  { path: 'env-template', prompt: (t) => `Generate .env template for: "${t}". OUTPUT JSON: {"variables":["..."]}` },
+  { path: 'ci-pipeline', prompt: (t) => `Create CI/CD pipeline config for: "${t}". OUTPUT JSON: {"config":"..."}` },
+  { path: 'npm-package', prompt: (t) => `Create package.json for: "${t}". OUTPUT JSON: {"package":{"name":"...","dependencies":["..."]}}` },
+  { path: 'changelog-generator', prompt: (t) => `Generate changelog for: "${t}". OUTPUT JSON: {"changes":[{"version":"...","changes":["..."]}]}` },
 ];
 
 module.exports = { toolRoutes };

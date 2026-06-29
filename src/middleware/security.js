@@ -4,11 +4,49 @@ const { err } = require('../utils/helpers');
 const logger = require('../utils/logger');
 
 const INTERNAL_CRON_SECRET = env('CRON_SECRET');
+const CSRF_SECRET = env('CSRF_SECRET') || 'pilotstaff-csrf-secret-2024';
+
+// CSRF Token Generation
+function generateCSRFToken() {
+  const timestamp = Date.now().toString();
+  const randomBytes = crypto.randomBytes(16).toString('hex');
+  const payload = `${timestamp}:${randomBytes}`;
+  const signature = crypto.createHmac('sha256', CSRF_SECRET).update(payload).digest('hex');
+  return `${payload}:${signature}`;
+}
+
+// CSRF Token Verification
+function verifyCSRFToken(token) {
+  if (!token) return false;
+  const parts = token.split(':');
+  if (parts.length !== 3) return false;
+  const [timestamp, randomBytes, signature] = parts;
+  const payload = `${timestamp}:${randomBytes}`;
+  const expectedSignature = crypto.createHmac('sha256', CSRF_SECRET).update(payload).digest('hex');
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) return false;
+  } catch { return false; }
+  const tokenAge = Date.now() - parseInt(timestamp, 10);
+  if (tokenAge > 86400000) return false;
+  return true;
+}
+
+// CSRF Middleware
+function csrfProtection(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const token = req.headers['x-csrf-token'] || req.body?._csrf || '';
+  if (!verifyCSRFToken(token)) {
+    logger.warn(`CSRF validation failed for ${req.method} ${req.path}`, { ip: req.ip, requestId: req.requestId });
+    return err(res, 'Invalid CSRF token', 403);
+  }
+  next();
+}
 
 function requestId(req, res, next) {
   const id = req.headers['x-request-id'] || crypto.randomUUID();
   req.requestId = id;
   res.setHeader('X-Request-Id', id);
+  res.setHeader('X-CSRF-Token', generateCSRFToken());
   next();
 }
 
@@ -163,4 +201,7 @@ module.exports = {
   cors,
   rateLimit,
   requestLogger,
+  csrfProtection,
+  generateCSRFToken,
+  verifyCSRFToken,
 };
