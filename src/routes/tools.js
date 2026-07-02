@@ -42,29 +42,48 @@ toolRoutes.forEach(route => {
     const input = sanitizeText(req.body.topic || req.body.prompt || '', 5000);
     if (!input) return err(res, 'Prompt is required', 400);
 
-    // Image tools — no AI call needed
+    // Image tools — no AI call needed. Uses Pollinations' free Flux model with
+    // AI prompt-enhancement enabled for significantly higher quality output.
     if (route.type === 'image') {
       const seed = Math.floor(Math.random() * 999999);
       await trackUsage(route.path, req);
+      const params = new URLSearchParams({
+        width: '1024',
+        height: '1024',
+        nologo: 'true',
+        enhance: 'true',
+        safe: 'true',
+        model: 'flux',
+        seed: String(seed),
+      });
       return ok(res, {
         success: true,
-        imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(input)}?width=1024&height=1024&nologo=true&seed=${seed}`,
+        imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(input)}?${params.toString()}`,
       });
     }
 
     if (route.type === 'logo') {
       const seed = Math.floor(Math.random() * 999999);
       const styles = [
-        `minimal flat logo "${input}" white bg`,
-        `gradient badge logo "${input}"`,
-        `luxury monogram "${input}"`,
-        `icon+text logo "${input}" modern`,
+        `minimal flat logo "${input}" white bg, vector style, clean lines, professional branding`,
+        `gradient badge logo "${input}", modern tech style, high detail`,
+        `luxury monogram "${input}", elegant serif, gold accents, premium brand identity`,
+        `icon+text logo "${input}" modern, bold geometric shapes, startup branding`,
       ];
       const selected = styles[Math.floor(Math.random() * styles.length)];
       await trackUsage(route.path, req);
+      const params = new URLSearchParams({
+        width: '1024',
+        height: '1024',
+        nologo: 'true',
+        enhance: 'true',
+        safe: 'true',
+        model: 'flux',
+        seed: String(seed),
+      });
       return ok(res, {
         success: true,
-        imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(selected)}?width=1024&height=1024&nologo=true&seed=${seed}`,
+        imageUrl: `https://image.pollinations.ai/prompt/${encodeURIComponent(selected)}?${params.toString()}`,
       });
     }
 
